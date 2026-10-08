@@ -47,13 +47,15 @@ class OrderSoldoutServiceImplTest {
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         service = new OrderSoldoutServiceImpl(orderSoldOutRepository, redisService, objectMapper, tracingMetrics);
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private OrderMonthly createMonthly() {
@@ -63,8 +65,6 @@ class OrderSoldoutServiceImplTest {
     private OrderYearly createYearly() {
         return new OrderYearly("2024", 100, 100000L, 500, 10, 20);
     }
-
-    // ========== findMonthlyOrders Tests ==========
 
     @Test
     void findMonthlyOrders_nullYear_returnsError() {
@@ -100,8 +100,6 @@ class OrderSoldoutServiceImplTest {
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findYearlyOrders Tests ==========
 
     @Test
     void findYearlyOrders_nullYear_returnsError() {

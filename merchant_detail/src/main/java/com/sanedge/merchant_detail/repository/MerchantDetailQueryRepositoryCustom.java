@@ -6,11 +6,11 @@ import com.sanedge.merchant_detail.entity.MerchantDetailsRelation;
 import io.smallrye.mutiny.Uni;
 
 public interface MerchantDetailQueryRepositoryCustom {
-    Uni<PagedResult<MerchantDetailsRelation>> findAllWithSocialLinks(String keyword, int page, int size);
+    Uni<PagedResult<MerchantDetailsRelation>> findAllWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req);
 
-    Uni<PagedResult<MerchantDetailsRelation>> findActiveWithSocialLinks(String keyword, int page, int size);
+    Uni<PagedResult<MerchantDetailsRelation>> findActiveWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req);
 
-    Uni<PagedResult<MerchantDetailsRelation>> findTrashedWithSocialLinks(String keyword, int page, int size);
+    Uni<PagedResult<MerchantDetailsRelation>> findTrashedWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req);
 
     Uni<Optional<MerchantDetailsRelation>> findByIdWithSocialLinks(Long merchantDetailId);
 }

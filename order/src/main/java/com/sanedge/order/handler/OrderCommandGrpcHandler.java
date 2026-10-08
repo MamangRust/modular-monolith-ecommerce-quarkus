@@ -13,6 +13,7 @@ import com.sanedge.order.domain.response.OrderResponseDeleteAt;
 import com.sanedge.order.service.OrderCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -24,6 +25,7 @@ import pb.order.OrderCommon.ApiResponseOrderAll;
 import pb.order.OrderCommon.ApiResponseOrderDelete;
 import pb.order.OrderCommon.ApiResponseOrderDeleteAt;
 import pb.order.OrderCommon.FindByIdOrderRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -34,6 +36,17 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
 
     @Override
     public Uni<ApiResponseOrder> create(OrderCommand.CreateOrderRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
+        for (OrderCommand.CreateOrderItemRequest item : request.getItemsList()) {
+            if (item.getProductId() <= 0) {
+                return IdValidator.invalid("Product id");
+            }
+        }
         CreateOrderRequest domainReq = new CreateOrderRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setUserId(request.getUserId());
@@ -74,12 +87,26 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseOrder> update(OrderCommand.UpdateOrderRequest request) {
+        if (request.getOrderId() <= 0) {
+            return IdValidator.invalid("Order id");
+        }
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
+        for (OrderCommand.UpdateOrderItemRequest item : request.getItemsList()) {
+            if (item.getProductId() <= 0) {
+                return IdValidator.invalid("Product id");
+            }
+        }
+        if (request.hasShipping() && request.getShipping().getShippingId() <= 0) {
+            return IdValidator.invalid("Shipping id");
+        }
         UpdateOrderRequest domainReq = new UpdateOrderRequest();
         domainReq.setOrderId(request.getOrderId());
         domainReq.setUserId(request.getUserId());
@@ -121,12 +148,15 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseOrderDeleteAt> trashedOrder(FindByIdOrderRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return orderCommandService.trash((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseOrderDeleteAt.Builder builder = ApiResponseOrderDeleteAt.newBuilder()
@@ -141,12 +171,15 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseOrderDeleteAt> restoreOrder(FindByIdOrderRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return orderCommandService.restore((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseOrderDeleteAt.Builder builder = ApiResponseOrderDeleteAt.newBuilder()
@@ -161,12 +194,15 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseOrderDelete> deleteOrderPermanent(FindByIdOrderRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return orderCommandService.delete((long) request.getId())
                 .map(apiResp -> ApiResponseOrderDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -176,7 +212,7 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -187,7 +223,7 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -197,7 +233,7 @@ public class OrderCommandGrpcHandler extends MutinyOrderCommandServiceGrpc.Order
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.order.OrderCommon.OrderResponse toProto(OrderResponse r) {

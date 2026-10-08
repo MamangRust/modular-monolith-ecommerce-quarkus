@@ -2,12 +2,14 @@ package com.sanedge.category.handler;
 
 import java.util.stream.Collectors;
 
-import com.sanedge.category.domain.requests.MonthTotalPriceIdRequest;
+import com.sanedge.category.domain.requests.FindMonthlyCategoryTotalPriceByIdRequest;
 import com.sanedge.category.domain.requests.YearTotalPriceIdRequest;
 import com.sanedge.category.service.stats.CategoryTotalPriceByIdService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -17,6 +19,7 @@ import pb.category.CategoryCommon.ApiResponseCategoryMonthlyTotalPrice;
 import pb.category.CategoryCommon.ApiResponseCategoryYearlyTotalPrice;
 import pb.category.CategoryCommon.FindYearMonthTotalPriceById;
 import pb.category.CategoryCommon.FindYearTotalPriceById;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -26,8 +29,12 @@ public class CategoryTotalPriceByIdGrpcHandler extends MutinyCategoryTotalPriceB
     CategoryTotalPriceByIdService categoryTotalPriceByIdService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryMonthlyTotalPrice> findMonthlyTotalPricesById(FindYearMonthTotalPriceById request) {
-        MonthTotalPriceIdRequest domainReq = new MonthTotalPriceIdRequest();
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
+        FindMonthlyCategoryTotalPriceByIdRequest domainReq = new FindMonthlyCategoryTotalPriceByIdRequest();
         domainReq.setYear(request.getYear());
         domainReq.setMonth(request.getMonth());
         domainReq.setCategoryId((long) request.getCategoryId());
@@ -49,11 +56,15 @@ public class CategoryTotalPriceByIdGrpcHandler extends MutinyCategoryTotalPriceB
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryYearlyTotalPrice> findYearlyTotalPricesById(FindYearTotalPriceById request) {
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         YearTotalPriceIdRequest domainReq = new YearTotalPriceIdRequest();
         domainReq.setYear(request.getYear());
         domainReq.setCategoryId(request.getCategoryId());
@@ -74,6 +85,6 @@ public class CategoryTotalPriceByIdGrpcHandler extends MutinyCategoryTotalPriceB
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

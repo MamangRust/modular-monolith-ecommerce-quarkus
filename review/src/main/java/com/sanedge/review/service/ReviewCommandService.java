@@ -13,7 +13,7 @@ public interface ReviewCommandService {
     Uni<ApiResponse<ReviewResponse>> update(UpdateReviewRequest request);
     Uni<ApiResponse<ReviewResponseDeleteAt>> trash(Integer id);
     Uni<ApiResponse<ReviewResponseDeleteAt>> restore(Integer id);
-    Uni<ApiResponse<Boolean>> delete(Integer id);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAll();
+    Uni<ApiResponse<Void>> delete(Integer id);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAll();
 }

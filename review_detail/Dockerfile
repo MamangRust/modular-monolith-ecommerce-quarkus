@@ -25,6 +25,7 @@ COPY review/pom.xml review/
 COPY review_detail/pom.xml review_detail/
 COPY shipping_address/pom.xml shipping_address/
 COPY slider/pom.xml slider/
+COPY chaos.yaml chaos.yaml
 
 COPY common/src common/src
 COPY review_detail/src review_detail/src
@@ -36,4 +37,5 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/review_detail/target/quarkus-app/ ./
 EXPOSE 9027 8099
+USER 1001
 ENTRYPOINT ["java", "-jar", "quarkus-run.jar"]

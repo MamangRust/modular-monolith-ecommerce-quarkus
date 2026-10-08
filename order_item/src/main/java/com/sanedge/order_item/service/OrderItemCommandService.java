@@ -12,9 +12,10 @@ public interface OrderItemCommandService {
     Uni<ApiResponse<OrderItemResponse>> update(UpdateOrderItemRequest request);
     Uni<ApiResponse<OrderItemResponseDeleteAt>> trash(Long id);
     Uni<ApiResponse<OrderItemResponseDeleteAt>> restore(Long id);
-    Uni<ApiResponse<Boolean>> deletePermanent(Long id);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAll();
-    Uni<ApiResponse<Boolean>> deleteByOrderPermanent(Long orderId);
+    Uni<ApiResponse<Void>> deletePermanent(Long id);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAll();
+    Uni<ApiResponse<Void>> deleteByOrderPermanent(Long orderId);
+    Uni<ApiResponse<Void>> deleteByOrderRollback(Long orderId);
     Uni<ApiResponse<Integer>> calculateTotalPrice(Long orderId);
 }

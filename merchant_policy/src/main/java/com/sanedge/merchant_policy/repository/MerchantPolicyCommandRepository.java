@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class MerchantPolicyCommandRepository implements PanacheRepository<MerchantPolicy> {
 
     @WithTransaction
-    public Uni<MerchantPolicy> trashed(Long merchantPolicyId) {
+    public Uni<MerchantPolicy> trash(Long merchantPolicyId) {
         return findById(merchantPolicyId)
                 .chain(policy -> {
                     if (policy != null && policy.getDeletedAt() == null) {
@@ -37,13 +37,13 @@ public class MerchantPolicyCommandRepository implements PanacheRepository<Mercha
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long merchantPolicyId) {
+    public Uni<MerchantPolicy> deletePermanent(Long merchantPolicyId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", merchantPolicyId).firstResult()
                 .chain(policy -> {
                     if (policy != null) {
-                        return delete(policy).map(v -> true);
+                        return delete(policy).map(v -> policy);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

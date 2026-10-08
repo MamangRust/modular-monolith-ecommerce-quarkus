@@ -9,19 +9,12 @@ import com.sanedge.shipping_address.domain.response.ShippingAddressResponse;
 import com.sanedge.shipping_address.domain.response.ShippingAddressResponseDeleteAt;
 import com.sanedge.shipping_address.entity.ShippingAddress;
 import com.sanedge.common.exception.ResourceNotFoundException;
+import com.sanedge.common.exception.InvalidRequestException;
 import com.sanedge.shipping_address.repository.ShippingAddressCommandRepository;
 import com.sanedge.shipping_address.service.ShippingAddressCommand;
+import com.sanedge.common.observability.TracingMetrics;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -29,367 +22,204 @@ import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class ShippingAddressCommandImplService implements ShippingAddressCommand {
-    private static final Logger logger = LoggerFactory.getLogger(ShippingAddressCommandImplService.class);
+        private static final Logger logger = LoggerFactory.getLogger(ShippingAddressCommandImplService.class);
 
-    ShippingAddressCommandRepository shippingAddressCommandRepository;
-    OpenTelemetry openTelemetry;
-    RedisService redisService;
+        ShippingAddressCommandRepository shippingAddressCommandRepository;
+        RedisService redisService;
+        TracingMetrics tracingMetrics;
 
-    private final Tracer tracer;
-    private final LongCounter requestsTotal;
-    private final DoubleHistogram requestDurationSeconds;
-
-    @Inject
-    public ShippingAddressCommandImplService(ShippingAddressCommandRepository shippingAddressCommandRepository,
-                                             OpenTelemetry openTelemetry,
-                                             RedisService redisService) {
-        this.shippingAddressCommandRepository = shippingAddressCommandRepository;
-        this.openTelemetry = openTelemetry;
-        this.redisService = redisService;
-        this.tracer = openTelemetry.getTracer("shipping-address-command-service", "1.0.0");
-        Meter meter = openTelemetry.getMeter("shipping-address-command-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
-    }
-
-    private Uni<Void> invalidateCache(Long shippingId) {
-        if (shippingId != null) {
-            return redisService.deleteReactive("shipping:id:" + shippingId).replaceWithVoid();
+        @Inject
+        public ShippingAddressCommandImplService(ShippingAddressCommandRepository shippingAddressCommandRepository,
+                        RedisService redisService,
+                        TracingMetrics tracingMetrics) {
+                this.shippingAddressCommandRepository = shippingAddressCommandRepository;
+                this.redisService = redisService;
+                this.tracingMetrics = tracingMetrics;
         }
-        return Uni.createFrom().voidItem();
-    }
 
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<ShippingAddressResponseDeleteAt>> trash(Integer shippingId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("trashShippingAddress")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "trash_shipping_address")
-                .setAttribute("shipping.id", shippingId.toString())
-                .startSpan();
+        private Uni<Void> invalidateCache(Long shippingId) {
+                if (shippingId != null) {
+                        return redisService.deleteReactive("shipping:id:" + shippingId).replaceWithVoid();
+                }
+                return Uni.createFrom().voidItem();
+        }
 
-        logger.info("🗑️ Trashing shipping address id={}", shippingId);
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<ShippingAddressResponseDeleteAt>> trash(Integer shippingId) {
+                logger.info("Trashing shipping address id={}", shippingId);
 
-        return shippingAddressCommandRepository.trashed(shippingId.longValue())
-                .chain(address -> {
-                    if (address == null) {
-                        throw new ResourceNotFoundException("Shipping address not found or already trashed");
-                    }
-                    ShippingAddressResponseDeleteAt response = ShippingAddressResponseDeleteAt.from(address);
+                return tracingMetrics.traceAndMeasure("trashShippingAddress", "trash_shipping_address",
+                                Attributes.builder().put("shipping.id", shippingId.toString()).build(),
+                                () -> shippingAddressCommandRepository.trash(shippingId.longValue())
+                                                .chain(address -> {
+                                                        if (address == null) {
+                                                                throw new ResourceNotFoundException(
+                                                                                "Shipping address not found or already trashed");
+                                                        }
+                                                        ShippingAddressResponseDeleteAt response = ShippingAddressResponseDeleteAt
+                                                                        .from(address);
 
-                    return invalidateCache(shippingId.longValue())
-                            .map(v -> {
-                                logger.info("Successfully trashed shipping address with ID: {}", shippingId);
-                                span.setStatus(StatusCode.OK);
+                                                        return invalidateCache(shippingId.longValue())
+                                                                        .map(v -> {
+                                                                                logger.info("Successfully trashed shipping address with ID: {}",
+                                                                                                shippingId);
+                                                                                return ApiResponse.success(
+                                                                                                "Shipping address trashed successfully",
+                                                                                                response);
+                                                                        });
+                                                }));
+        }
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "trash_shipping_address",
-                                        AttributeKey.stringKey("status"), "success"));
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<ShippingAddressResponseDeleteAt>> restore(Integer shippingId) {
+                logger.info("Restoring shipping address id={}", shippingId);
 
-                                return ApiResponse.success("🗑️ Shipping address trashed successfully!", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to trash shipping address id={}", shippingId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
+                return tracingMetrics.traceAndMeasure("restoreShippingAddress", "restore_shipping_address",
+                                Attributes.builder().put("shipping.id", shippingId.toString()).build(),
+                                () -> shippingAddressCommandRepository.restore(shippingId.longValue())
+                                                .chain(address -> {
+                                                        if (address == null) {
+                                                                throw new ResourceNotFoundException(
+                                                                                "Shipping address not found or not trashed");
+                                                        }
+                                                        ShippingAddressResponseDeleteAt response = ShippingAddressResponseDeleteAt
+                                                                        .from(address);
 
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_shipping_address",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_shipping_address"));
-                });
-    }
+                                                        return invalidateCache(shippingId.longValue())
+                                                                        .map(v -> {
+                                                                                logger.info("Successfully restored shipping address with ID: {}",
+                                                                                                shippingId);
+                                                                                return ApiResponse.success(
+                                                                                                "Shipping address restored successfully",
+                                                                                                response);
+                                                                        });
+                                                }));
+        }
 
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<ShippingAddressResponseDeleteAt>> restore(Integer shippingId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreShippingAddress")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "restore_shipping_address")
-                .setAttribute("shipping.id", shippingId.toString())
-                .startSpan();
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<Void>> deletePermanently(Integer shippingId) {
+                Attributes attrs = Attributes.builder().put("shipping.id", shippingId.toString()).build();
+                logger.warn("Permanently deleting shipping address id={}", shippingId);
 
-        logger.info("♻️ Restoring shipping address id={}", shippingId);
+                return tracingMetrics.traceAndMeasure("deleteShippingAddressPermanent",
+                                "delete_shipping_address_permanent", attrs,
+                                () -> shippingAddressCommandRepository.deletePermanent(shippingId.longValue())
+                                                .chain(deletedAddress -> {
+                                                        if (deletedAddress == null) {
+                                                                logger.warn("Permanent delete failed - shipping address not found or must be trashed before permanent deletion with id: {}", shippingId);
+                                                                throw new InvalidRequestException("Shipping address not found or must be trashed before permanent deletion");
+                                                        }
+                                                        return invalidateCache(shippingId.longValue())
+                                                                        .map(v2 -> {
+                                                                                logger.info("Successfully permanently deleted shipping address with ID: {}",
+                                                                                                shippingId);
+                                                                                return ApiResponse.<Void>success("Shipping address permanently deleted");
+                                                                        });
+                                                }));
+        }
 
-        return shippingAddressCommandRepository.restore(shippingId.longValue())
-                .chain(address -> {
-                    if (address == null) {
-                        throw new ResourceNotFoundException("Shipping address not found or not trashed");
-                    }
-                    ShippingAddressResponseDeleteAt response = ShippingAddressResponseDeleteAt.from(address);
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<Void>> restoreAll() {
+                logger.info("Restoring ALL trashed shipping addresses");
 
-                    return invalidateCache(shippingId.longValue())
-                            .map(v -> {
-                                logger.info("Successfully restored shipping address with ID: {}", shippingId);
-                                span.setStatus(StatusCode.OK);
+                return tracingMetrics.traceAndMeasure("restoreAllShippingAddresses", "restore_all_shipping_addresses",
+                                () -> shippingAddressCommandRepository.restoreAllDeleted()
+                                                .map(success -> {
+                                                        if (!success) {
+                                                                throw new ResourceNotFoundException("No trashed shipping addresses found");
+                                                        }
+                                                        logger.info("Successfully restored all trashed shipping addresses");
+                                                        return ApiResponse.<Void>success("All shipping addresses restored successfully");
+                                                }));
+        }
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "restore_shipping_address",
-                                        AttributeKey.stringKey("status"), "success"));
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<Void>> deleteAllPermanent() {
+                logger.warn("Permanently deleting ALL trashed shipping addresses");
 
-                                return ApiResponse.success("♻️ Shipping address restored successfully!", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to restore shipping address id={}", shippingId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
+                return tracingMetrics.traceAndMeasure("deleteAllShippingAddressesPermanent",
+                                "delete_all_shipping_addresses_permanent",
+                                () -> shippingAddressCommandRepository.deleteAllDeleted()
+                                                .map(success -> {
+                                                        if (!success) {
+                                                                throw new ResourceNotFoundException("No trashed shipping addresses found");
+                                                        }
+                                                        logger.info("Successfully permanently deleted all trashed shipping addresses");
+                                                        return ApiResponse.<Void>success("All shipping addresses permanently deleted");
+                                                }));
+        }
 
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_shipping_address",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_shipping_address"));
-                });
-    }
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<ShippingAddressResponse>> create(
+                        pb.shipping_address.ShippingAddressCommand.CreateShippingAddressRequest req) {
+                logger.info("Creating shipping address for orderId={}", req.getOrderId());
 
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<Boolean>> deletePermanently(Integer shippingId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteShippingAddressPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "delete_shipping_address_permanent")
-                .setAttribute("shipping.id", shippingId.toString())
-                .startSpan();
+                return tracingMetrics.traceAndMeasure("createShippingAddress", "create_shipping_address",
+                                Attributes.builder().put("order.id", String.valueOf(req.getOrderId())).build(),
+                                () -> {
+                                        ShippingAddress address = new ShippingAddress();
+                                        address.setOrderId(req.getOrderId());
+                                        address.setAlamat(req.getAlamat());
+                                        address.setProvinsi(req.getProvinsi());
+                                        address.setKota(req.getKota());
+                                        address.setCourier(req.getCourier());
+                                        address.setShippingMethod(req.getShippingMethod());
+                                        address.setShippingCost(req.getShippingCost());
+                                        address.setNegara(req.getNegara());
 
-        logger.warn("🧨 Permanently deleting shipping address id={}", shippingId);
+                                        return shippingAddressCommandRepository.persist(address)
+                                                        .map(persisted -> {
+                                                                logger.info("Successfully created shipping address for orderId={}",
+                                                                                req.getOrderId());
+                                                                return ApiResponse.success(
+                                                                                "Shipping address created successfully",
+                                                                                ShippingAddressResponse
+                                                                                                .from(persisted));
+                                                        });
+                                });
+        }
 
-        return shippingAddressCommandRepository.deletePermanent(shippingId.longValue())
-                .chain(deleted -> {
-                    return invalidateCache(shippingId.longValue())
-                            .map(v -> {
-                                logger.info("Successfully permanently deleted shipping address with ID: {}", shippingId);
-                                span.setStatus(StatusCode.OK);
+        @Override
+        @WithTransaction
+        public Uni<ApiResponse<ShippingAddressResponse>> update(
+                        pb.shipping_address.ShippingAddressCommand.UpdateShippingAddressRequest req) {
+                logger.info("Updating shipping address id={}", req.getShippingId());
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "delete_shipping_address_permanent",
-                                        AttributeKey.stringKey("status"), "success"));
+                return tracingMetrics.traceAndMeasure("updateShippingAddress", "update_shipping_address",
+                                Attributes.builder().put("shipping.id", String.valueOf(req.getShippingId())).build(),
+                                () -> shippingAddressCommandRepository.findById((long) req.getShippingId())
+                                                .chain(address -> {
+                                                        if (address == null) {
+                                                                throw new ResourceNotFoundException(
+                                                                                "Shipping address not found with id="
+                                                                                                + req.getShippingId());
+                                                        }
+                                                        address.setOrderId(req.getOrderId());
+                                                        address.setAlamat(req.getAlamat());
+                                                        address.setProvinsi(req.getProvinsi());
+                                                        address.setKota(req.getKota());
+                                                        address.setCourier(req.getCourier());
+                                                        address.setShippingMethod(req.getShippingMethod());
+                                                        address.setShippingCost(req.getShippingCost());
+                                                        address.setNegara(req.getNegara());
 
-                                return ApiResponse.success("🧨 Shipping address permanently deleted!", deleted);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to permanently delete shipping address id={}", shippingId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_shipping_address_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_shipping_address_permanent"));
-                });
-    }
-
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<Boolean>> restoreAll() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreAllShippingAddresses")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "restore_all_shipping_addresses")
-                .startSpan();
-
-        logger.info("🔄 Restoring ALL trashed shipping addresses");
-
-        return shippingAddressCommandRepository.restoreAllDeleted()
-                .map(restored -> {
-                    logger.info("Successfully restored all trashed shipping addresses");
-                    span.setStatus(StatusCode.OK);
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_shipping_addresses",
-                            AttributeKey.stringKey("status"), "success"));
-
-                    return ApiResponse.success("🔄 All shipping addresses restored successfully!", restored);
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to restore all shipping addresses", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_shipping_addresses",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_shipping_addresses"));
-                });
-    }
-
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<Boolean>> deleteAllPermanent() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteAllShippingAddressesPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "delete_all_shipping_addresses_permanent")
-                .startSpan();
-
-        logger.warn("💣 Permanently deleting ALL trashed shipping addresses");
-
-        return shippingAddressCommandRepository.deleteAllDeleted()
-                .map(deleted -> {
-                    logger.info("Successfully permanently deleted all trashed shipping addresses");
-                    span.setStatus(StatusCode.OK);
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_shipping_addresses_permanent",
-                            AttributeKey.stringKey("status"), "success"));
-
-                    return ApiResponse.success("💣 All shipping addresses permanently deleted!", deleted);
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to delete all shipping addresses", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_shipping_addresses_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_shipping_addresses_permanent"));
-                });
-    }
-
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<ShippingAddressResponse>> create(pb.shipping_address.ShippingAddressCommand.CreateShippingAddressRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("createShippingAddress")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "create_shipping_address")
-                .startSpan();
-
-        logger.info("🆕 Creating shipping address for orderId={}", req.getOrderId());
-
-        ShippingAddress address = new ShippingAddress();
-        address.setOrderId(req.getOrderId());
-        address.setAlamat(req.getAlamat());
-        address.setProvinsi(req.getProvinsi());
-        address.setKota(req.getKota());
-        address.setCourier(req.getCourier());
-        address.setShippingMethod(req.getShippingMethod());
-        address.setShippingCost(req.getShippingCost());
-        address.setNegara(req.getNegara());
-
-        return shippingAddressCommandRepository.persist(address)
-                .map(persisted -> {
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_shipping_address",
-                            AttributeKey.stringKey("status"), "success"));
-                    return ApiResponse.success("✅ Shipping address created successfully!", ShippingAddressResponse.from(persisted));
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to create shipping address", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_shipping_address",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_shipping_address"));
-                });
-    }
-
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<ShippingAddressResponse>> update(pb.shipping_address.ShippingAddressCommand.UpdateShippingAddressRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("updateShippingAddress")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "shipping-address-service")
-                .setAttribute("operation", "update_shipping_address")
-                .setAttribute("shipping.id", String.valueOf(req.getShippingId()))
-                .startSpan();
-
-        logger.info("🆕 Updating shipping address id={}", req.getShippingId());
-
-        return shippingAddressCommandRepository.findById((long) req.getShippingId())
-                .chain(address -> {
-                    if (address == null) {
-                        throw new ResourceNotFoundException("Shipping address not found with id=" + req.getShippingId());
-                    }
-                    address.setOrderId(req.getOrderId());
-                    address.setAlamat(req.getAlamat());
-                    address.setProvinsi(req.getProvinsi());
-                    address.setKota(req.getKota());
-                    address.setCourier(req.getCourier());
-                    address.setShippingMethod(req.getShippingMethod());
-                    address.setShippingCost(req.getShippingCost());
-                    address.setNegara(req.getNegara());
-
-                    return shippingAddressCommandRepository.persist(address)
-                            .chain(persisted -> invalidateCache((long) req.getShippingId())
-                                    .map(v -> {
-                                        span.setStatus(StatusCode.OK);
-                                        requestsTotal.add(1, Attributes.of(
-                                                AttributeKey.stringKey("operation"), "update_shipping_address",
-                                                AttributeKey.stringKey("status"), "success"));
-                                        return ApiResponse.success("✅ Shipping address updated successfully!", ShippingAddressResponse.from(persisted));
-                                    }));
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to update shipping address id={}", req.getShippingId(), e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_shipping_address",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_shipping_address"));
-                });
-    }
+                                                        return shippingAddressCommandRepository.persist(address)
+                                                                        .chain(persisted -> invalidateCache(
+                                                                                        (long) req.getShippingId())
+                                                                                        .map(v -> {
+                                                                                                logger.info("Successfully updated shipping address with ID: {}",
+                                                                                                                req.getShippingId());
+                                                                                                return ApiResponse
+                                                                                                                .success("Shipping address updated successfully",
+                                                                                                                                ShippingAddressResponse
+                                                                                                                                                .from(persisted));
+                                                                                        }));
+                                                }));
+        }
 }

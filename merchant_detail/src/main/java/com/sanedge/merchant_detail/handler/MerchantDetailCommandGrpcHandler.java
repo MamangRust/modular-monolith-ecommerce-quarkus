@@ -5,6 +5,7 @@ import com.sanedge.merchant_detail.domain.response.MerchantDetailResponseDeleteA
 import com.sanedge.merchant_detail.service.MerchantDetailCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -13,6 +14,7 @@ import pb.merchant_detail.MutinyMerchantDetailCommandServiceGrpc;
 import pb.merchant_detail.MerchantDetailCommon.ApiResponseMerchantDetail;
 import pb.merchant_detail.MerchantDetailCommon.ApiResponseMerchantDetailDeleteAt;
 import pb.merchant_detail.MerchantDetailCommon.FindByIdMerchantDetailRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -35,12 +37,15 @@ public class MerchantDetailCommandGrpcHandler
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseMerchantDetail> update(
             pb.merchant_detail.MerchantDetailCommand.UpdateMerchantDetailRequest request) {
+        if (request.getMerchantDetailId() <= 0) {
+            return IdValidator.invalid("MerchantDetail id");
+        }
         return merchantDetailCommandService.updateMerchant(request)
                 .map(apiResp -> {
                     ApiResponseMerchantDetail.Builder builder = ApiResponseMerchantDetail.newBuilder()
@@ -55,12 +60,15 @@ public class MerchantDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantDetailDeleteAt> trashedMerchantDetail(FindByIdMerchantDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantDetailCommandService.trashedMerchant((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantDetailDeleteAt.Builder builder = ApiResponseMerchantDetailDeleteAt.newBuilder()
@@ -75,12 +83,15 @@ public class MerchantDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantDetailDeleteAt> restoreMerchantDetail(FindByIdMerchantDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantDetailCommandService.restoreMerchant((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantDetailDeleteAt.Builder builder = ApiResponseMerchantDetailDeleteAt.newBuilder()
@@ -95,13 +106,16 @@ public class MerchantDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<pb.merchant.MerchantCommon.ApiResponseMerchantDelete> deleteMerchantDetailPermanent(
             FindByIdMerchantDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantDetailCommandService.deleteMerchantPermanent((long) request.getId())
                 .map(apiResp -> pb.merchant.MerchantCommon.ApiResponseMerchantDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -111,7 +125,7 @@ public class MerchantDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -123,7 +137,7 @@ public class MerchantDetailCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -134,7 +148,7 @@ public class MerchantDetailCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_detail.MerchantDetailCommon.MerchantDetailResponse toProto(MerchantDetailResponse r) {

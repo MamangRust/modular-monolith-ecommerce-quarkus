@@ -1,21 +1,22 @@
 package com.sanedge.review_detail.handler;
 
-import java.util.List;
-
 import com.sanedge.review_detail.domain.response.ReviewDetailResponse;
 import com.sanedge.review_detail.domain.response.ReviewDetailResponseDeleteAt;
 import com.sanedge.review_detail.service.ReviewDetailService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.review_detail.MutinyReviewDetailQueryServiceGrpc;
-import pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetail;
 import pb.review_detail.ReviewDetailCommon.ApiResponsePaginationReviewDetails;
 import pb.review_detail.ReviewDetailCommon.ApiResponsePaginationReviewDetailsDeleteAt;
+import pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetail;
 import pb.review_detail.ReviewDetailCommon.FindByIdReviewDetailRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -25,6 +26,7 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
     ReviewDetailService reviewDetailService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationReviewDetails> findAll(pb.review.ReviewQuery.FindAllReviewRequest request) {
         return reviewDetailService.findAll(request.getPage(), request.getPageSize(), request.getSearch())
                 .map(apiResp -> {
@@ -41,11 +43,15 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseReviewDetail> findById(FindByIdReviewDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewDetailService.findById(request.getId())
                 .map(apiResp -> {
                     ApiResponseReviewDetail.Builder builder = ApiResponseReviewDetail.newBuilder()
@@ -60,15 +66,18 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
-    public Uni<ApiResponsePaginationReviewDetailsDeleteAt> findByActive(pb.review.ReviewQuery.FindAllReviewRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationReviewDetailsDeleteAt> findByActive(
+            pb.review.ReviewQuery.FindAllReviewRequest request) {
         return reviewDetailService.findByActive(request.getPage(), request.getPageSize(), request.getSearch())
                 .map(apiResp -> {
-                    ApiResponsePaginationReviewDetailsDeleteAt.Builder builder = ApiResponsePaginationReviewDetailsDeleteAt.newBuilder()
+                    ApiResponsePaginationReviewDetailsDeleteAt.Builder builder = ApiResponsePaginationReviewDetailsDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -81,14 +90,17 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
-    public Uni<ApiResponsePaginationReviewDetailsDeleteAt> findByTrashed(pb.review.ReviewQuery.FindAllReviewRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationReviewDetailsDeleteAt> findByTrashed(
+            pb.review.ReviewQuery.FindAllReviewRequest request) {
         return reviewDetailService.findByTrashed(request.getPage(), request.getPageSize(), request.getSearch())
                 .map(apiResp -> {
-                    ApiResponsePaginationReviewDetailsDeleteAt.Builder builder = ApiResponsePaginationReviewDetailsDeleteAt.newBuilder()
+                    ApiResponsePaginationReviewDetailsDeleteAt.Builder builder = ApiResponsePaginationReviewDetailsDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -101,7 +113,7 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.review_detail.ReviewDetailCommon.ReviewDetailsResponse toProto(ReviewDetailResponse r) {
@@ -123,7 +135,8 @@ public class ReviewDetailQueryGrpcHandler extends MutinyReviewDetailQueryService
         if (r == null) {
             return pb.review_detail.ReviewDetailCommon.ReviewDetailsResponseDeleteAt.getDefaultInstance();
         }
-        pb.review_detail.ReviewDetailCommon.ReviewDetailsResponseDeleteAt.Builder builder = pb.review_detail.ReviewDetailCommon.ReviewDetailsResponseDeleteAt.newBuilder()
+        pb.review_detail.ReviewDetailCommon.ReviewDetailsResponseDeleteAt.Builder builder = pb.review_detail.ReviewDetailCommon.ReviewDetailsResponseDeleteAt
+                .newBuilder()
                 .setId(r.getId())
                 .setReviewId(r.getReviewId())
                 .setType(r.getType() != null ? r.getType() : "")

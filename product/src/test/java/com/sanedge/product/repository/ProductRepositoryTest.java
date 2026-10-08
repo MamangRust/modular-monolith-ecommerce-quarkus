@@ -9,18 +9,26 @@ import org.junit.jupiter.api.Test;
 import com.sanedge.product.domain.requests.FindAllProductByMerchantRequest;
 import com.sanedge.product.entity.Product;
 
-import io.quarkus.test.TestReactiveTransaction;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.TestReactiveTransaction;
+import io.quarkus.test.vertx.UniAsserter;
+import com.sanedge.common.test.PostgreSqlResource;
+import com.sanedge.common.test.ReactiveSequential;
+import io.quarkus.test.common.QuarkusTestResource;
+import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 
 @QuarkusTest
+@QuarkusTestResource(PostgreSqlResource.class)
 @TestReactiveTransaction
 class ProductRepositoryTest {
 
-    @Inject ProductQueryRepository productQueryRepo;
-    @Inject ProductCommandRepository productCommandRepo;
+    @Inject
+    ProductQueryRepository productQueryRepo;
+    @Inject
+    ProductCommandRepository productCommandRepo;
 
-    private Product createProduct(String name, Integer merchantId) {
+    private Uni<Product> createAndPersistProduct(String name, Integer merchantId) {
         Product p = new Product();
         p.setMerchantId(merchantId);
         p.setCategoryId(1);
@@ -35,81 +43,101 @@ class ProductRepositoryTest {
         p.setImageProduct("http://example.com/" + name + ".jpg");
         p.setCreatedAt(new Timestamp(System.currentTimeMillis()));
         p.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-        return productQueryRepo.persist(p).await().indefinitely();
+        return productQueryRepo.persist(p).replaceWith(p);
     }
 
     @Test
-    void testCreateAndFindById() {
-        Product saved = createProduct("Phone", 1);
-        assertThat(saved).isNotNull();
-        assertThat(saved.id).isNotNull();
-        assertThat(saved.getName()).isEqualTo("Phone");
-
-        Product found = productQueryRepo.findById(saved.id).await().indefinitely();
-        assertThat(found).isNotNull();
-        assertThat(found.getName()).isEqualTo("Phone");
+    void testCreateAndFindById(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistProduct("Phone", 1)
+                .invoke(saved -> {
+                    assertThat(saved).isNotNull();
+                    assertThat(saved.id).isNotNull();
+                    assertThat(saved.getName()).isEqualTo("Phone");
+                })
+                .chain(saved -> productQueryRepo.findById(saved.id))
+                .invoke(found -> {
+                    assertThat(found).isNotNull();
+                    assertThat(found.getName()).isEqualTo("Phone");
+                })
+                .replaceWithVoid());
     }
 
     @Test
-    void testTrashProduct() {
-        Product saved = createProduct("ToTrash", 1);
-        Product trashed = productCommandRepo.trashed(saved.id).await().indefinitely();
-        assertThat(trashed).isNotNull();
-        assertThat(trashed.getDeletedAt()).isNotNull();
+    void testTrashProduct(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistProduct("ToTrash", 1)
+                .chain(saved -> productCommandRepo.trashed(saved.id))
+                .invoke(trashed -> {
+                    assertThat(trashed).isNotNull();
+                    assertThat(trashed.getDeletedAt()).isNotNull();
+                })
+                .replaceWithVoid());
     }
 
     @Test
-    void testTrashReturnsNullIfAlreadyTrashed() {
-        Product saved = createProduct("TrashTwice", 1);
-        productCommandRepo.trashed(saved.id).await().indefinitely();
-        Product second = productCommandRepo.trashed(saved.id).await().indefinitely();
-        assertThat(second).isNull();
+    void testTrashReturnsNullIfAlreadyTrashed(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistProduct("TrashTwice", 1)
+                .chain(saved -> productCommandRepo.trashed(saved.id)
+                        .chain(ignored -> productCommandRepo.trashed(saved.id)))
+                .invoke(second -> assertThat(second).isNull())
+                .replaceWithVoid());
     }
 
     @Test
-    void testRestoreProduct() {
-        Product saved = createProduct("ToRestore", 1);
-        productCommandRepo.trashed(saved.id).await().indefinitely();
-        Product restored = productCommandRepo.restore(saved.id).await().indefinitely();
-        assertThat(restored).isNotNull();
-        assertThat(restored.getDeletedAt()).isNull();
+    void testRestoreProduct(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistProduct("ToRestore", 1)
+                .chain(saved -> productCommandRepo.trashed(saved.id)
+                        .chain(ignored -> productCommandRepo.restore(saved.id)))
+                .invoke(restored -> {
+                    assertThat(restored).isNotNull();
+                    assertThat(restored.getDeletedAt()).isNull();
+                })
+                .replaceWithVoid());
     }
 
     @Test
-    void testDeletePermanent() {
-        Product saved = createProduct("ToDelete", 1);
-        productCommandRepo.trashed(saved.id).await().indefinitely();
-        Product deleted = productCommandRepo.deletePermanent(saved.id).await().indefinitely();
-        assertThat(deleted).isNotNull();
-        Product check = productQueryRepo.findById(saved.id).await().indefinitely();
-        assertThat(check).isNull();
+    void testDeletePermanent(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistProduct("ToDelete", 1)
+                .chain(saved -> productCommandRepo.trashed(saved.id)
+                        .chain(ignored -> productCommandRepo.deletePermanent(saved.id))
+                        .chain(deleted -> {
+                            assertThat(deleted).isNotNull();
+                            return productQueryRepo.findById(saved.id);
+                        }))
+                .invoke(check -> assertThat(check).isNull())
+                .replaceWithVoid());
     }
 
     @Test
-    void testFindProductsByMerchant() {
-        createProduct("Phone1", 1);
-        createProduct("Phone2", 2);
-        FindAllProductByMerchantRequest req = new FindAllProductByMerchantRequest();
-        req.setMerchantId(1);
-        req.setCategoryId(0);
-        req.setMinPrice(0);
-        req.setMaxPrice(999999999);
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch("");
-        var result = productQueryRepo.findByMerchant(req).await().indefinitely();
-        assertThat(result.getData()).isNotEmpty();
+    void testFindProductsByMerchant(UniAsserter asserter) {
+        asserter.execute(() -> ReactiveSequential.sequential(
+                createAndPersistProduct("Phone1", 1),
+                createAndPersistProduct("Phone2", 2))
+                .chain(() -> {
+                    FindAllProductByMerchantRequest req = new FindAllProductByMerchantRequest();
+                    req.setMerchantId(1);
+                    req.setCategoryId(0);
+                    req.setMinPrice(0);
+                    req.setMaxPrice(999999999);
+                    req.setPage(1);
+                    req.setPageSize(10);
+                    req.setSearch("");
+                    return productQueryRepo.findByMerchant(req);
+                })
+                .invoke(result -> assertThat(result.getData()).isNotEmpty())
+                .replaceWithVoid());
     }
 
     @Test
-    void testRestoreAllDeleted() {
-        Boolean result = productCommandRepo.restoreAllDeleted().await().indefinitely();
-        assertThat(result).isNotNull();
+    void testRestoreAllDeleted(UniAsserter asserter) {
+        asserter.execute(() -> productCommandRepo.restoreAllDeleted()
+                .invoke(result -> assertThat(result).isNotNull())
+                .replaceWithVoid());
     }
 
     @Test
-    void testDeleteAllDeleted() {
-        Boolean result = productCommandRepo.deleteAllDeleted().await().indefinitely();
-        assertThat(result).isNotNull();
+    void testDeleteAllDeleted(UniAsserter asserter) {
+        asserter.execute(() -> productCommandRepo.deleteAllDeleted()
+                .invoke(result -> assertThat(result).isNotNull())
+                .replaceWithVoid());
     }
 }

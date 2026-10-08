@@ -188,7 +188,7 @@ class BannerQueryGrpcHandlerTest {
         private Banner createTestBanner(Long id, String name) {
                 Banner banner = new Banner();
                 try {
-                        Field idField = banner.getClass().getSuperclass().getSuperclass().getDeclaredField("id");
+                        Field idField = banner.getClass().getDeclaredField("id");
                         idField.setAccessible(true);
                         idField.set(banner, id);
                 } catch (Exception e) {

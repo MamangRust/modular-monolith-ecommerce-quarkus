@@ -1,10 +1,15 @@
 package com.sanedge.merchant_policy.entity;
 
+import com.sanedge.common.entity.BaseModel;
+
 import com.sanedge.merchant_policy.domain.requests.CreateMerchantPolicyRequest;
 import com.sanedge.merchant_policy.domain.requests.UpdateMerchantPolicyRequest;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,6 +23,10 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "merchant_policies")
 public class MerchantPolicy extends BaseModel {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public Long id;
 
     @Column(name = "merchant_id", nullable = false)
     private Integer merchantId;

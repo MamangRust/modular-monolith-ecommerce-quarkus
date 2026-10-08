@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @ApplicationScoped
 public class CategoryCommandRepository implements PanacheRepository<Category> {
     @WithTransaction
-    public Uni<Category> trashed(Long categoryId) {
+    public Uni<Category> trash(Long categoryId) {
         return findById(categoryId)
                 .chain(category -> {
                     if (category != null && category.getDeletedAt() == null) {
@@ -36,13 +36,13 @@ public class CategoryCommandRepository implements PanacheRepository<Category> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long categoryId) {
+    public Uni<Category> deletePermanent(Long categoryId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", categoryId).firstResult()
                 .chain(category -> {
                     if (category != null) {
-                        return delete(category).map(v -> true);
+                        return delete(category).map(v -> category);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

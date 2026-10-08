@@ -70,8 +70,6 @@ class CategoryQueryGrpcHandlerTest {
                 .build();
     }
 
-    // ========== findAll Tests ==========
-
     @Test
     void findAll_success_returnsPaginationResponse() {
         CategoryQuery.FindAllCategoryRequest request = CategoryQuery.FindAllCategoryRequest.newBuilder()
@@ -117,8 +115,6 @@ class CategoryQueryGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== findById Tests ==========
-
     @Test
     void findById_success_returnsCategory() {
         CategoryCommon.FindByIdCategoryRequest request = CategoryCommon.FindByIdCategoryRequest.newBuilder()
@@ -155,8 +151,6 @@ class CategoryQueryGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== findByActive Tests ==========
-
     @Test
     void findByActive_success_returnsPaginationResponse() {
         CategoryQuery.FindAllCategoryRequest request = CategoryQuery.FindAllCategoryRequest.newBuilder()
@@ -178,8 +172,6 @@ class CategoryQueryGrpcHandlerTest {
         assertThat(response.getStatus()).isEqualTo("success");
         assertThat(response.getDataCount()).isEqualTo(1);
     }
-
-    // ========== findByTrashed Tests ==========
 
     @Test
     void findByTrashed_success_returnsPaginationResponse() {

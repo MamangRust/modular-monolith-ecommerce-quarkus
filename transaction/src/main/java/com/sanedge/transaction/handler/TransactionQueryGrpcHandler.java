@@ -10,8 +10,10 @@ import com.sanedge.transaction.domain.response.TransactionResponseDeleteAt;
 import com.sanedge.transaction.service.TransactionQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.transaction.MutinyTransactionQueryServiceGrpc;
@@ -20,6 +22,7 @@ import pb.transaction.TransactionCommon.ApiResponsePaginationTransactionDeleteAt
 import pb.transaction.TransactionCommon.ApiResponseTransaction;
 import pb.transaction.TransactionCommon.FindByIdTransactionRequest;
 import pb.transaction.TransactionQuery.FindByOrderIdTransactionRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -29,6 +32,7 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
     TransactionQueryService transactionQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationTransaction> findAllTransactions(
             pb.transaction.TransactionQuery.FindAllTransactionRequest request) {
         FindAllTransactionRequest domainReq = new FindAllTransactionRequest();
@@ -49,12 +53,16 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationTransaction> findByMerchant(
             pb.transaction.TransactionQuery.FindAllTransactionByMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         FindAllTransactionByMerchantRequest domainReq = new FindAllTransactionByMerchantRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setPage(request.getPage());
@@ -74,11 +82,15 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransaction> findById(FindByIdTransactionRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return transactionQueryService.findById(request.getId())
                 .map(apiResp -> {
                     ApiResponseTransaction.Builder builder = ApiResponseTransaction.newBuilder()
@@ -93,12 +105,16 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransaction> findByOrderId(FindByOrderIdTransactionRequest request) {
+        if (request.getOrderId() <= 0) {
+            return IdValidator.invalid("Order id");
+        }
         return transactionQueryService.findByOrderId(request.getOrderId())
                 .map(apiResp -> {
                     ApiResponseTransaction.Builder builder = ApiResponseTransaction.newBuilder()
@@ -113,11 +129,12 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationTransaction> findByActive(
             pb.transaction.TransactionQuery.FindAllTransactionRequest request) {
         FindAllTransactionRequest domainReq = new FindAllTransactionRequest();
@@ -138,10 +155,11 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationTransactionDeleteAt> findByTrashed(
             pb.transaction.TransactionQuery.FindAllTransactionRequest request) {
         FindAllTransactionRequest domainReq = new FindAllTransactionRequest();
@@ -163,7 +181,7 @@ public class TransactionQueryGrpcHandler extends MutinyTransactionQueryServiceGr
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.transaction.TransactionCommon.TransactionResponse toProto(TransactionResponse r) {

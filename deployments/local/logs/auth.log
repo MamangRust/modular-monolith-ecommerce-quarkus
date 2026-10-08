@@ -1,0 +1,146 @@
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-08-20 02:12:21,488 WARN  [io.quarkus.config] (main) The "quarkus.vertx.worker-pool-size" config property is deprecated and should not be used anymore.
+2026-08-20 02:12:54,414 WARN  [io.vertx.sqlclient.impl.SocketConnectionBase] (vert.x-eventloop-thread-3) Backend notice: severity='NOTICE', code='00000', message='constraint "ukkea6nxkvr7x40yfyyo6ihuy16" of relation "reset_tokens" does not exist, skipping', detail='null', hint='null', position='null', internalPosition='null', internalQuery='null', where='null', file='tablecmds.c', line='12655', routine='ATExecDropConstraint', schema='null', table='null', column='null', dataType='null', constraint='null'
+2026-08-20 02:12:54,424 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-4) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:12:54,703 WARN  [io.quarkus.grpc.runtime.GrpcServerRecorder] (main) Using legacy gRPC support with a separate HTTP server instance. This is the current default to maintain compatibility.
+You can switch to the new unified HTTP server by setting quarkus.grpc.server.use-separate-server=false
+This change is recommended for new applications and will become the default in future versions.
+
+2026-08-20 02:12:58,513 WARN  [io.vertx.core.impl.BlockedThreadChecker] (vertx-blocked-thread-checker) Thread Thread[vert.x-eventloop-thread-5,5,main] has been blocked for 3645 ms, time limit is 2000 ms: io.vertx.core.VertxException: Thread blocked
+	at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+	at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.defineClass(RunnerClassLoader.java:177)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.loadClass(RunnerClassLoader.java:133)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.loadClass(RunnerClassLoader.java:87)
+	at io.vertx.core.impl.transports.JDKTransport.serverChannelFactory(JDKTransport.java:65)
+	at io.vertx.grpc.VertxServer$ActualServer.<init>(VertxServer.java:103)
+	at io.vertx.grpc.VertxServer$ActualServer.<init>(VertxServer.java:58)
+	at io.vertx.grpc.VertxServer.lambda$start$1(VertxServer.java:178)
+	at java.base/java.util.concurrent.ConcurrentHashMap.computeIfAbsent(ConcurrentHashMap.java:1708)
+	at io.vertx.grpc.VertxServer.start(VertxServer.java:178)
+	at io.quarkus.grpc.runtime.GrpcServerRecorder$GrpcServerVerticle.start(GrpcServerRecorder.java:755)
+	at io.vertx.core.impl.DeploymentManager.lambda$doDeploy$5(DeploymentManager.java:210)
+	at io.vertx.core.impl.ContextInternal.dispatch(ContextInternal.java:270)
+	at io.vertx.core.impl.ContextInternal.dispatch(ContextInternal.java:252)
+	at io.vertx.core.impl.ContextInternal.lambda$runOnContext$0(ContextInternal.java:50)
+	at io.netty.util.concurrent.AbstractEventExecutor.runTask(AbstractEventExecutor.java:173)
+	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:166)
+	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:472)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:569)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:998)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+2026-08-20 02:12:59,461 INFO  [io.quarkus.grpc.runtime.GrpcServerRecorder] (vert.x-eventloop-thread-0) Started gRPC server on 0.0.0.0:9012 [TLS enabled: false]
+2026-08-20 02:13:00,194 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-6) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:00,328 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:06,941 INFO  [com.sanedge.common.chaos.ChaosManager] (main) ✅ Chaos configuration successfully loaded/reloaded from chaos.yaml. Total policies: 121
+2026-08-20 02:13:08,732 INFO  [io.quarkus] (main) auth-service 1.0.0-SNAPSHOT on JVM (powered by Quarkus 3.31.3) started in 93.483s. Listening on: http://0.0.0.0:8092
+2026-08-20 02:13:08,736 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-08-20 02:13:08,737 INFO  [io.quarkus] (main) Installed features: [cdi, grpc-client, grpc-server, hibernate-orm, hibernate-reactive, hibernate-reactive-panache, hibernate-validator, opentelemetry, reactive-pg-client, redis-client, rest, rest-jackson, scheduler, security, smallrye-context-propagation, smallrye-health, smallrye-jwt, vertx]
+2026-08-20 02:13:10,903 WARN  [io.vertx.core.impl.BlockedThreadChecker] (vertx-blocked-thread-checker) Thread Thread[vert.x-eventloop-thread-7,5,main] has been blocked for 2283 ms, time limit is 2000 ms: io.vertx.core.VertxException: Thread blocked
+	at org.hibernate.grammars.hql.HqlParser.expression(HqlParser.java:7570)
+	at org.hibernate.grammars.hql.HqlParser.predicate(HqlParser.java:6718)
+	at org.hibernate.grammars.hql.HqlParser.whereClause(HqlParser.java:6160)
+	at org.hibernate.grammars.hql.HqlParser.query(HqlParser.java:2506)
+	at org.hibernate.grammars.hql.HqlParser.orderedQuery(HqlParser.java:2161)
+	at org.hibernate.grammars.hql.HqlParser.queryExpression(HqlParser.java:2026)
+	at org.hibernate.grammars.hql.HqlParser.selectStatement(HqlParser.java:442)
+	at org.hibernate.grammars.hql.HqlParser.statement(HqlParser.java:372)
+	at org.hibernate.query.hql.internal.StandardHqlTranslator.parseHql(StandardHqlTranslator.java:105)
+	at org.hibernate.query.hql.internal.StandardHqlTranslator.translate(StandardHqlTranslator.java:60)
+	at org.hibernate.query.internal.QueryInterpretationCacheStandardImpl.createHqlInterpretation(QueryInterpretationCacheStandardImpl.java:165)
+	at org.hibernate.query.internal.QueryInterpretationCacheStandardImpl.resolveHqlInterpretation(QueryInterpretationCacheStandardImpl.java:147)
+	at org.hibernate.query.spi.QueryEngine.interpretHql(QueryEngine.java:61)
+	at org.hibernate.internal.AbstractSharedSessionContract.interpretHql(AbstractSharedSessionContract.java:951)
+	at org.hibernate.reactive.session.impl.ReactiveSessionImpl.interpretAndCreateSelectionQuery(ReactiveSessionImpl.java:561)
+	at org.hibernate.reactive.session.impl.ReactiveSessionImpl.createReactiveSelectionQuery(ReactiveSessionImpl.java:552)
+	at org.hibernate.reactive.mutiny.impl.MutinySessionImpl.createSelectionQuery(MutinySessionImpl.java:121)
+	at io.quarkus.hibernate.reactive.panache.common.runtime.CommonAbstractPanacheQueryImpl.createBaseQuery(CommonAbstractPanacheQueryImpl.java:420)
+	at io.quarkus.hibernate.reactive.panache.common.runtime.CommonAbstractPanacheQueryImpl.createQuery(CommonAbstractPanacheQueryImpl.java:366)
+	at io.quarkus.hibernate.reactive.panache.common.runtime.CommonAbstractPanacheQueryImpl.lambda$list$8(CommonAbstractPanacheQueryImpl.java:332)
+	at io.smallrye.context.impl.wrappers.SlowContextualFunction.apply(SlowContextualFunction.java:21)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni$UniOnItemTransformToUniProcessor.performInnerSubscription(UniOnItemTransformToUni.java:68)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni$UniOnItemTransformToUniProcessor.onItem(UniOnItemTransformToUni.java:57)
+	at io.smallrye.mutiny.operators.uni.builders.UniCreateFromKnownItem$KnownItemSubscription.forward(UniCreateFromKnownItem.java:42)
+	at io.smallrye.mutiny.operators.uni.builders.UniCreateFromKnownItem.subscribe(UniCreateFromKnownItem.java:23)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni.subscribe(UniOnItemTransformToUni.java:25)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.builders.UniCreateFromDeferredSupplier.subscribe(UniCreateFromDeferredSupplier.java:36)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni.subscribe(UniOnItemTransformToUni.java:25)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni.subscribe(UniOnItemTransformToUni.java:25)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnFailureFlatMap.subscribe(UniOnFailureFlatMap.java:34)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnCancellationCall.subscribe(UniOnCancellationCall.java:27)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni.subscribe(UniOnItemTransformToUni.java:25)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni.subscribe(UniOnItemTransformToUni.java:25)
+	at io.smallrye.mutiny.operators.AbstractUni.subscribe(AbstractUni.java:35)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni$UniOnItemTransformToUniProcessor.performInnerSubscription(UniOnItemTransformToUni.java:81)
+	at io.smallrye.mutiny.operators.uni.UniOnItemTransformToUni$UniOnItemTransformToUniProcessor.onItem(UniOnItemTransformToUni.java:57)
+	at io.smallrye.mutiny.operators.uni.builders.UniCreateFromCompletionStage$CompletionStageUniSubscription.forwardResult(UniCreateFromCompletionStage.java:63)
+	at java.base/java.util.concurrent.CompletableFuture.uniWhenComplete(CompletableFuture.java:863)
+	at java.base/java.util.concurrent.CompletableFuture$UniWhenComplete.tryFire(CompletableFuture.java:841)
+	at java.base/java.util.concurrent.CompletableFuture.postComplete(CompletableFuture.java:510)
+	at java.base/java.util.concurrent.CompletableFuture.complete(CompletableFuture.java:2179)
+	at io.vertx.core.Future.lambda$toCompletionStage$3(Future.java:600)
+	at io.vertx.core.impl.future.FutureImpl$4.onSuccess(FutureImpl.java:176)
+	at io.vertx.core.impl.future.FutureImpl$ListenerArray.onSuccess(FutureImpl.java:310)
+	at io.vertx.core.impl.future.FutureBase.emitSuccess(FutureBase.java:66)
+	at io.vertx.core.impl.future.FutureImpl.tryComplete(FutureImpl.java:259)
+	at io.vertx.core.impl.future.PromiseImpl.onSuccess(PromiseImpl.java:49)
+	at io.vertx.core.impl.future.PromiseImpl.handle(PromiseImpl.java:41)
+	at io.vertx.sqlclient.impl.TransactionImpl.lambda$wrap$0(TransactionImpl.java:72)
+	at io.vertx.core.impl.future.FutureImpl$4.onSuccess(FutureImpl.java:176)
+	at io.vertx.core.impl.future.FutureBase.lambda$emitSuccess$0(FutureBase.java:60)
+	at io.netty.util.concurrent.AbstractEventExecutor.runTask(AbstractEventExecutor.java:173)
+	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:166)
+	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:472)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:569)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:998)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+2026-08-20 02:13:16,073 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:21,932 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:27,695 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:33,248 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:38,895 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:44,665 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:50,525 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:13:56,447 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:14:02,035 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Too many log messages detected. Will only log 1 time(s) per minute from now on.
+2026-08-20 02:14:02,035 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:15:05,345 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:16:08,328 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:17:12,198 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-0) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:18:15,575 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-1) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:19:17,898 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-1) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:20:21,398 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-1) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:21:24,053 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-1) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:22:27,086 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-1) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:23:30,266 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:24:33,445 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:25:36,073 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:25:58,532 INFO  [io.quarkus.grpc.runtime.supports.Channels] (vert.x-eventloop-thread-5) Creating Netty gRPC channel ...
+2026-08-20 02:25:58,558 INFO  [io.quarkus.grpc.runtime.supports.Channels] (vert.x-eventloop-thread-5) Creating Netty gRPC channel ...
+2026-08-20 02:26:38,677 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:27:43,258 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:28:46,231 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:29:49,082 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:30:51,549 WARNING [io.quarkus.opentelemetry.runtime.exporter.otlp.sender.VertxGrpcSender] (vert.x-eventloop-thread-2) Failed to export TraceRequestMarshaler. The request could not be executed. Full error message: Connection refused: localhost/127.0.0.1:4317
+2026-08-20 02:31:34,218 INFO  [com.sanedge.common.chaos.ChaosManager] (Shutdown thread) 🛑 Halt command triggered: disabling all chaos policies.
+2026-08-20 02:31:34,218 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (Shutdown thread) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:31:34,400 INFO  [io.quarkus.grpc.runtime.supports.Channels] (Shutdown thread) Shutting down gRPC channel ManagedChannelOrphanWrapper{delegate=ManagedChannelImpl{logId=7, target=dns:///localhost:9011}}
+2026-08-20 02:31:34,403 INFO  [io.quarkus.grpc.runtime.supports.Channels] (Shutdown thread) Shutting down gRPC channel ManagedChannelOrphanWrapper{delegate=ManagedChannelImpl{logId=5, target=dns:///localhost:9006}}
+2026-08-20 02:31:35,225 INFO  [io.quarkus] (Shutdown thread) auth-service stopped in 1.070s

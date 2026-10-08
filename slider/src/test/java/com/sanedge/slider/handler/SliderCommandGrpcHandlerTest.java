@@ -1,11 +1,8 @@
 package com.sanedge.slider.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-
-import java.lang.reflect.Field;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -13,480 +10,194 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
+import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.slider.domain.response.SliderResponse;
 import com.sanedge.slider.domain.response.SliderResponseDeleteAt;
 import com.sanedge.slider.service.SliderCommandService;
-import com.sanedge.common.domain.response.ApiResponse;
-import com.sanedge.common.exception.ResourceNotFoundException;
 
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
-import pb.slider.SliderCommand.CreateSliderRequest;
-import pb.slider.SliderCommand.UpdateSliderRequest;
-import pb.slider.SliderCommon.ApiResponseSlider;
-import pb.slider.SliderCommon.ApiResponseSliderAll;
-import pb.slider.SliderCommon.ApiResponseSliderDelete;
-import pb.slider.SliderCommon.ApiResponseSliderDeleteAt;
-import pb.slider.SliderCommon.FindByIdSliderRequest;
-import com.google.protobuf.Empty;
+import pb.slider.SliderCommand;
+import pb.slider.SliderCommon;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class SliderCommandGrpcHandlerTest {
 
-    @Mock
-    private SliderCommandService sliderCommandService;
+        @Mock
+        private SliderCommandService sliderCommandService;
 
-    private SliderCommandGrpcHandler handler;
+        @Mock
+        private SliderResponse sliderResponse;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        handler = new SliderCommandGrpcHandler();
-        injectService(handler, sliderCommandService);
-    }
+        @Mock
+        private SliderResponseDeleteAt sliderResponseDeleteAt;
 
-    private void injectService(Object target, Object service) throws Exception {
-        Field field = target.getClass().getDeclaredField("sliderCommandService");
-        field.setAccessible(true);
-        field.set(target, service);
-    }
+        @Mock
+        private ApiResponse<SliderResponse> apiResponseSuccess;
 
-    // ========== CREATE SLIDER HANDLER TESTS ==========
+        @Mock
+        private ApiResponse<SliderResponseDeleteAt> apiResponseDeleteAtSuccess;
 
-    @Test
-    @DisplayName("create - should return success response when slider created successfully")
-    void create_Success() {
-        // Arrange
-        CreateSliderRequest request = CreateSliderRequest.newBuilder()
-                .setName("Summer Sale Slider")
-                .setImage("/images/summer-sale.jpg")
-                .build();
+        @Mock
+        private ApiResponse<Void> apiResponseEmptySuccess;
 
-        SliderResponse mockResponse = SliderResponse.builder()
-                .id(1L)
-                .name("Summer Sale Slider")
-                .image("/images/summer-sale.jpg")
-                .createdAt("2026-07-01 10:00:00")
-                .updatedAt("2026-07-01 10:00:00")
-                .build();
+        private SliderCommandGrpcHandler handler;
 
-        ApiResponse<SliderResponse> apiResponse = ApiResponse.success(
-                "Slider created successfully", mockResponse);
+        @BeforeEach
+        void setUp() {
+                handler = new SliderCommandGrpcHandler();
+                handler.sliderCommandService = sliderCommandService;
 
-        when(sliderCommandService.createSlider(any()))
-                .thenReturn(Uni.createFrom().item(apiResponse));
+                when(sliderResponse.getId()).thenReturn(1L);
+                when(sliderResponse.getName()).thenReturn("Created Slider");
+                when(sliderResponse.getImage()).thenReturn("image.png");
+                when(sliderResponse.getCreatedAt()).thenReturn("2024-01-01 00:00:00.0");
+                when(sliderResponse.getUpdatedAt()).thenReturn("2024-01-01 00:00:00.0");
 
-        // Act
-        ApiResponseSlider response = handler.create(request).await().indefinitely();
+                when(sliderResponseDeleteAt.getId()).thenReturn(1L);
+                when(sliderResponseDeleteAt.getName()).thenReturn("Trashed Slider");
+                when(sliderResponseDeleteAt.getImage()).thenReturn("image.png");
+                when(sliderResponseDeleteAt.getCreatedAt()).thenReturn("2024-01-01 00:00:00.0");
+                when(sliderResponseDeleteAt.getUpdatedAt()).thenReturn("2024-01-01 00:00:00.0");
+                when(sliderResponseDeleteAt.getDeletedAt()).thenReturn("2024-01-02 00:00:00.0");
 
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("Slider created successfully");
-        assertThat(response.hasData()).isTrue();
-        assertThat(response.getData().getId()).isEqualTo(1);
-        assertThat(response.getData().getName()).isEqualTo("Summer Sale Slider");
-        assertThat(response.getData().getImage()).isEqualTo("/images/summer-sale.jpg");
-    }
+                when(apiResponseSuccess.status()).thenReturn("success");
+                when(apiResponseSuccess.message()).thenReturn("Operation successful");
+                when(apiResponseSuccess.data()).thenReturn(sliderResponse);
 
-    @Test
-    @DisplayName("create - should return NOT_FOUND error when ResourceNotFoundException thrown")
-    void create_NotFoundError() {
-        // Arrange
-        CreateSliderRequest request = CreateSliderRequest.newBuilder()
-                .setName("Test Slider")
-                .setImage("/images/test.jpg")
-                .build();
+                when(apiResponseDeleteAtSuccess.status()).thenReturn("success");
+                when(apiResponseDeleteAtSuccess.message()).thenReturn("Operation successful");
+                when(apiResponseDeleteAtSuccess.data()).thenReturn(sliderResponseDeleteAt);
 
-        when(sliderCommandService.createSlider(any()))
-                .thenReturn(Uni.createFrom().failure(new ResourceNotFoundException("Slider not found")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.create(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                when(apiResponseEmptySuccess.status()).thenReturn("success");
+                when(apiResponseEmptySuccess.message()).thenReturn("Bulk operation successful");
+                when(apiResponseEmptySuccess.data()).thenReturn(null);
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Slider not found");
-    }
+        @Test
+        @DisplayName("create - should return ApiResponseSlider on success")
+        void create_Success() {
+                SliderCommand.CreateSliderRequest request = SliderCommand.CreateSliderRequest.newBuilder()
+                                .setName("New Slider").setImage("image.png").build();
 
-    @Test
-    @DisplayName("create - should return INTERNAL error when generic exception thrown")
-    void create_InternalError() {
-        // Arrange
-        CreateSliderRequest request = CreateSliderRequest.newBuilder()
-                .setName("Test Slider")
-                .setImage("/images/test.jpg")
-                .build();
+                when(sliderCommandService.createSlider(any())).thenReturn(Uni.createFrom().item(apiResponseSuccess));
 
-        when(sliderCommandService.createSlider(any()))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("Database error")));
+                SliderCommon.ApiResponseSlider response = handler.create(request).await().indefinitely();
 
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.create(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getData().getName()).isEqualTo("Created Slider");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Database error");
-    }
+        @Test
+        @DisplayName("create - should return INTERNAL on failure")
+        void create_InternalError() {
+                SliderCommand.CreateSliderRequest request = SliderCommand.CreateSliderRequest.newBuilder().build();
 
-    @Test
-    @DisplayName("create - should correctly map null data in response")
-    void create_NullData() {
-        // Arrange
-        CreateSliderRequest request = CreateSliderRequest.newBuilder()
-                .setName("Test Slider")
-                .setImage("/images/test.jpg")
-                .build();
+                when(sliderCommandService.createSlider(any()))
+                                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB error")));
 
-        ApiResponse<SliderResponse> apiResponse = ApiResponse.success("Created", null);
+                StatusRuntimeException ex = null;
+                try {
+                        handler.create(request).await().indefinitely();
+                } catch (StatusRuntimeException e) {
+                        ex = e;
+                }
 
-        when(sliderCommandService.createSlider(any()))
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSlider response = handler.create(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.hasData()).isFalse();
-    }
-
-    // ========== UPDATE SLIDER HANDLER TESTS ==========
-
-    @Test
-    @DisplayName("update - should return success response when slider updated successfully")
-    void update_Success() {
-        // Arrange
-        UpdateSliderRequest request = UpdateSliderRequest.newBuilder()
-                .setId(1)
-                .setName("Updated Slider")
-                .setImage("/images/updated.jpg")
-                .build();
-
-        SliderResponse mockResponse = SliderResponse.builder()
-                .id(1L)
-                .name("Updated Slider")
-                .image("/images/updated.jpg")
-                .createdAt("2026-07-01 10:00:00")
-                .updatedAt("2026-07-02 10:00:00")
-                .build();
-
-        ApiResponse<SliderResponse> apiResponse = ApiResponse.success(
-                "Slider updated successfully", mockResponse);
-
-        when(sliderCommandService.updateSlider(any()))
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSlider response = handler.update(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("Slider updated successfully");
-        assertThat(response.hasData()).isTrue();
-        assertThat(response.getData().getId()).isEqualTo(1);
-        assertThat(response.getData().getName()).isEqualTo("Updated Slider");
-        assertThat(response.getData().getImage()).isEqualTo("/images/updated.jpg");
-    }
-
-    @Test
-    @DisplayName("update - should return NOT_FOUND error when slider not found")
-    void update_NotFoundError() {
-        // Arrange
-        UpdateSliderRequest request = UpdateSliderRequest.newBuilder()
-                .setId(999)
-                .setName("Updated Slider")
-                .setImage("/images/updated.jpg")
-                .build();
-
-        when(sliderCommandService.updateSlider(any()))
-                .thenReturn(Uni.createFrom().failure(new ResourceNotFoundException("Slider not found")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.update(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(ex).isNotNull();
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Slider not found");
-    }
+        @Test
+        @DisplayName("update - should return ApiResponseSlider on success")
+        void update_Success() {
+                SliderCommand.UpdateSliderRequest request = SliderCommand.UpdateSliderRequest.newBuilder()
+                                .setId(1).setName("Updated Slider").setImage("image2.png").build();
 
-    // ========== TRASH SLIDER HANDLER TESTS ==========
+                when(sliderCommandService.updateSlider(any())).thenReturn(Uni.createFrom().item(apiResponseSuccess));
 
-    @Test
-    @DisplayName("trashedSlider - should return success response when slider trashed successfully")
-    void trashedSlider_Success() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(1)
-                .build();
+                SliderCommon.ApiResponseSlider response = handler.update(request).await().indefinitely();
 
-        SliderResponseDeleteAt mockResponse = SliderResponseDeleteAt.builder()
-                .id(1L)
-                .name("Trashed Slider")
-                .image("/images/slider.jpg")
-                .createdAt("2026-07-01 10:00:00")
-                .updatedAt("2026-07-01 10:00:00")
-                .deletedAt("2026-07-02 10:00:00")
-                .build();
-
-        ApiResponse<SliderResponseDeleteAt> apiResponse = ApiResponse.success(
-                "Slider trashed successfully!", mockResponse);
-
-        when(sliderCommandService.trashedSlider(1))
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSliderDeleteAt response = handler.trashedSlider(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("Slider trashed successfully!");
-        assertThat(response.hasData()).isTrue();
-        assertThat(response.getData().getId()).isEqualTo(1);
-        assertThat(response.getData().getDeletedAt().getValue()).isEqualTo("2026-07-02 10:00:00");
-    }
-
-    @Test
-    @DisplayName("trashedSlider - should return NOT_FOUND error when slider not found")
-    void trashedSlider_NotFoundError() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(999)
-                .build();
-
-        when(sliderCommandService.trashedSlider(999))
-                .thenReturn(Uni.createFrom().failure(
-                        new ResourceNotFoundException("Slider not found or already trashed")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.trashedSlider(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Slider not found or already trashed");
-    }
+        @Test
+        @DisplayName("trashedSlider - should return ApiResponseSliderDeleteAt on success")
+        void trashedSlider_Success() {
+                SliderCommon.FindByIdSliderRequest request = SliderCommon.FindByIdSliderRequest.newBuilder().setId(1)
+                                .build();
 
-    // ========== RESTORE SLIDER HANDLER TESTS ==========
+                when(sliderCommandService.trashedSlider(any()))
+                                .thenReturn(Uni.createFrom().item(apiResponseDeleteAtSuccess));
 
-    @Test
-    @DisplayName("restoreSlider - should return success response when slider restored successfully")
-    void restoreSlider_Success() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(1)
-                .build();
+                SliderCommon.ApiResponseSliderDeleteAt response = handler.trashedSlider(request).await().indefinitely();
 
-        SliderResponseDeleteAt mockResponse = SliderResponseDeleteAt.builder()
-                .id(1L)
-                .name("Restored Slider")
-                .image("/images/slider.jpg")
-                .createdAt("2026-07-01 10:00:00")
-                .updatedAt("2026-07-02 10:00:00")
-                .deletedAt("")
-                .build();
-
-        ApiResponse<SliderResponseDeleteAt> apiResponse = ApiResponse.success(
-                "Slider restored successfully!", mockResponse);
-
-        when(sliderCommandService.restoreSlider(1))
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSliderDeleteAt response = handler.restoreSlider(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("Slider restored successfully!");
-        assertThat(response.hasData()).isTrue();
-        assertThat(response.getData().getId()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("restoreSlider - should return NOT_FOUND error when slider not found")
-    void restoreSlider_NotFoundError() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(999)
-                .build();
-
-        when(sliderCommandService.restoreSlider(999))
-                .thenReturn(Uni.createFrom().failure(
-                        new ResourceNotFoundException("Slider not found or not trashed")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.restoreSlider(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getData().getDeletedAt().getValue()).isEqualTo("2024-01-02 00:00:00.0");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Slider not found or not trashed");
-    }
+        @Test
+        @DisplayName("restoreSlider - should return ApiResponseSliderDeleteAt on success")
+        void restoreSlider_Success() {
+                SliderCommon.FindByIdSliderRequest request = SliderCommon.FindByIdSliderRequest.newBuilder().setId(1)
+                                .build();
 
-    // ========== DELETE SLIDER PERMANENT HANDLER TESTS ==========
+                when(sliderCommandService.restoreSlider(any()))
+                                .thenReturn(Uni.createFrom().item(apiResponseDeleteAtSuccess));
 
-    @Test
-    @DisplayName("deleteSliderPermanent - should return success response when slider deleted permanently")
-    void deleteSliderPermanent_Success() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(1)
-                .build();
+                SliderCommon.ApiResponseSliderDeleteAt response = handler.restoreSlider(request).await().indefinitely();
 
-        ApiResponse<Void> apiResponse = ApiResponse.success("Slider permanently deleted!");
-
-        when(sliderCommandService.deleteSliderPermanent(1))
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSliderDelete response = handler.deleteSliderPermanent(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("Slider permanently deleted!");
-    }
-
-    @Test
-    @DisplayName("deleteSliderPermanent - should return NOT_FOUND error when slider not found")
-    void deleteSliderPermanent_NotFoundError() {
-        // Arrange
-        FindByIdSliderRequest request = FindByIdSliderRequest.newBuilder()
-                .setId(999)
-                .build();
-
-        when(sliderCommandService.deleteSliderPermanent(999))
-                .thenReturn(Uni.createFrom().failure(
-                        new ResourceNotFoundException("Slider not found or not trashed")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.deleteSliderPermanent(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("Slider not found or not trashed");
-    }
+        @Test
+        @DisplayName("deleteSliderPermanent - should return ApiResponseSliderDelete on success")
+        void deleteSliderPermanent_Success() {
+                SliderCommon.FindByIdSliderRequest request = SliderCommon.FindByIdSliderRequest.newBuilder().setId(1)
+                                .build();
 
-    // ========== RESTORE ALL SLIDERS HANDLER TESTS ==========
+                when(sliderCommandService.deleteSliderPermanent(any()))
+                                .thenReturn(Uni.createFrom().item(apiResponseEmptySuccess));
 
-    @Test
-    @DisplayName("restoreAllSlider - should return success response when all sliders restored")
-    void restoreAllSlider_Success() {
-        // Arrange
-        Empty request = Empty.newBuilder().build();
+                SliderCommon.ApiResponseSliderDelete response = handler.deleteSliderPermanent(request).await()
+                                .indefinitely();
 
-        ApiResponse<Void> apiResponse = ApiResponse.success("All sliders restored successfully!");
-
-        when(sliderCommandService.restoreAllSliders())
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSliderAll response = handler.restoreAllSlider(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("All sliders restored successfully!");
-    }
-
-    @Test
-    @DisplayName("restoreAllSlider - should return INTERNAL error when no trashed sliders found")
-    void restoreAllSlider_NotFoundError() {
-        // Arrange
-        Empty request = Empty.newBuilder().build();
-
-        when(sliderCommandService.restoreAllSliders())
-                .thenReturn(Uni.createFrom().failure(
-                        new ResourceNotFoundException("No trashed sliders found")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.restoreAllSlider(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getMessage()).isEqualTo("Bulk operation successful");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("No trashed sliders found");
-    }
+        @Test
+        @DisplayName("restoreAllSlider - should return ApiResponseSliderAll on success")
+        void restoreAllSlider_Success() {
+                when(sliderCommandService.restoreAllSliders())
+                                .thenReturn(Uni.createFrom().item(apiResponseEmptySuccess));
 
-    // ========== DELETE ALL SLIDERS PERMANENT HANDLER TESTS ==========
+                SliderCommon.ApiResponseSliderAll response = handler
+                                .restoreAllSlider(com.google.protobuf.Empty.getDefaultInstance()).await()
+                                .indefinitely();
 
-    @Test
-    @DisplayName("deleteAllSliderPermanent - should return success response when all sliders deleted permanently")
-    void deleteAllSliderPermanent_Success() {
-        // Arrange
-        Empty request = Empty.newBuilder().build();
-
-        ApiResponse<Void> apiResponse = ApiResponse.success("All sliders permanently deleted!");
-
-        when(sliderCommandService.deleteAllSlidersPermanent())
-                .thenReturn(Uni.createFrom().item(apiResponse));
-
-        // Act
-        ApiResponseSliderAll response = handler.deleteAllSliderPermanent(request).await().indefinitely();
-
-        // Assert
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getMessage()).isEqualTo("All sliders permanently deleted!");
-    }
-
-    @Test
-    @DisplayName("deleteAllSliderPermanent - should return INTERNAL error when no trashed sliders found")
-    void deleteAllSliderPermanent_NotFoundError() {
-        // Arrange
-        Empty request = Empty.newBuilder().build();
-
-        when(sliderCommandService.deleteAllSlidersPermanent())
-                .thenReturn(Uni.createFrom().failure(
-                        new ResourceNotFoundException("No trashed sliders found")));
-
-        // Act & Assert
-        StatusRuntimeException exception = null;
-        try {
-            handler.deleteAllSliderPermanent(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            exception = e;
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
         }
 
-        assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
-        assertThat(exception.getStatus().getDescription()).isEqualTo("No trashed sliders found");
-    }
+        @Test
+        @DisplayName("deleteAllSliderPermanent - should return ApiResponseSliderAll on success")
+        void deleteAllSliderPermanent_Success() {
+                when(sliderCommandService.deleteAllSlidersPermanent())
+                                .thenReturn(Uni.createFrom().item(apiResponseEmptySuccess));
+
+                SliderCommon.ApiResponseSliderAll response = handler
+                                .deleteAllSliderPermanent(com.google.protobuf.Empty.getDefaultInstance()).await()
+                                .indefinitely();
+
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+        }
 }

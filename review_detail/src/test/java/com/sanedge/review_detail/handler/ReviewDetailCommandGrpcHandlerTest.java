@@ -14,8 +14,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.exception.ResourceNotFoundException;
-import com.sanedge.review_detail.domain.requests.CreateReviewDetailRequest;
-import com.sanedge.review_detail.domain.requests.UpdateReviewDetailRequest;
 import com.sanedge.review_detail.domain.response.ReviewDetailResponse;
 import com.sanedge.review_detail.domain.response.ReviewDetailResponseDeleteAt;
 import com.sanedge.review_detail.service.ReviewDetailService;
@@ -23,7 +21,6 @@ import com.sanedge.review_detail.service.ReviewDetailService;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
-import pb.review_detail.MutinyReviewDetailCommandServiceGrpc;
 import pb.review_detail.ReviewDetailCommon.FindByIdReviewDetailRequest;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,9 +46,9 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should create review detail successfully via gRPC handler")
         void shouldCreateReviewDetailSuccessfully() {
-            // Given
-            pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest request = 
-                pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest.newBuilder()
+
+            pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest request = pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest
+                    .newBuilder()
                     .setReviewId(1)
                     .setType("image")
                     .setUrl("https://example.com/image.jpg")
@@ -72,11 +69,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.create(any()))
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
             pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetail response = handler.create(request)
                     .await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getData()).isNotNull();
@@ -89,9 +84,9 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should handle failure when creating review detail via gRPC handler")
         void shouldHandleFailureWhenCreatingReviewDetail() {
-            // Given
-            pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest request = 
-                pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest.newBuilder()
+
+            pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest request = pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest
+                    .newBuilder()
                     .setReviewId(1)
                     .setType("image")
                     .setUrl("https://example.com/image.jpg")
@@ -102,7 +97,6 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.create(any()))
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.create(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -119,9 +113,9 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should update review detail successfully via gRPC handler")
         void shouldUpdateReviewDetailSuccessfully() {
-            // Given
-            pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest request = 
-                pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest.newBuilder()
+
+            pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest request = pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest
+                    .newBuilder()
                     .setReviewDetailId(1)
                     .setType("video")
                     .setUrl("https://example.com/video.mp4")
@@ -142,11 +136,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.update(any()))
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
             pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetail response = handler.update(request)
                     .await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getData().getType()).isEqualTo("video");
@@ -156,9 +148,9 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should return NOT_FOUND when review detail not found during update")
         void shouldReturnNotFoundWhenReviewDetailNotFound() {
-            // Given
-            pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest request = 
-                pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest.newBuilder()
+
+            pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest request = pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest
+                    .newBuilder()
                     .setReviewDetailId(999)
                     .setType("video")
                     .setUrl("https://example.com/video.mp4")
@@ -169,7 +161,6 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.update(any()))
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.update(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -186,7 +177,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should trash review detail successfully via gRPC handler")
         void shouldTrashReviewDetailSuccessfully() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(1)
                     .build();
@@ -206,11 +197,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.trash(1))
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
-            pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetailDeleteAt response = 
-                    handler.trashedReviewDetail(request).await().indefinitely();
+            pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetailDeleteAt response = handler
+                    .trashedReviewDetail(request).await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getData()).isNotNull();
@@ -221,16 +210,16 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should return NOT_FOUND when trashing non-existent review detail")
         void shouldReturnNotFoundWhenTrashingNonExistentReviewDetail() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(999)
                     .build();
 
-            ResourceNotFoundException exception = new ResourceNotFoundException("Review detail not found or already trashed");
+            ResourceNotFoundException exception = new ResourceNotFoundException(
+                    "Review detail not found or already trashed");
             when(reviewDetailService.trash(999))
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.trashedReviewDetail(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -247,7 +236,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should restore review detail successfully via gRPC handler")
         void shouldRestoreReviewDetailSuccessfully() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(1)
                     .build();
@@ -266,11 +255,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.restore(1))
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
-            pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetailDeleteAt response = 
-                    handler.restoreReviewDetail(request).await().indefinitely();
+            pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetailDeleteAt response = handler
+                    .restoreReviewDetail(request).await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getData()).isNotNull();
@@ -280,16 +267,16 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should return NOT_FOUND when restoring non-existent review detail")
         void shouldReturnNotFoundWhenRestoringNonExistentReviewDetail() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(999)
                     .build();
 
-            ResourceNotFoundException exception = new ResourceNotFoundException("Review detail not found or not trashed");
+            ResourceNotFoundException exception = new ResourceNotFoundException(
+                    "Review detail not found or not trashed");
             when(reviewDetailService.restore(999))
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.restoreReviewDetail(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -306,7 +293,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should delete review detail permanently via gRPC handler")
         void shouldDeleteReviewDetailPermanently() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(1)
                     .build();
@@ -316,11 +303,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.delete(1))
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewDelete response = 
-                    handler.deleteReviewDetailPermanent(request).await().indefinitely();
+            pb.review.ReviewCommon.ApiResponseReviewDelete response = handler.deleteReviewDetailPermanent(request)
+                    .await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getMessage()).isEqualTo("Review detail permanently deleted");
@@ -329,7 +314,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should return NOT_FOUND when deleting non-existent review detail")
         void shouldReturnNotFoundWhenDeletingNonExistentReviewDetail() {
-            // Given
+
             FindByIdReviewDetailRequest request = FindByIdReviewDetailRequest.newBuilder()
                     .setId(999)
                     .build();
@@ -338,7 +323,6 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.delete(999))
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.deleteReviewDetailPermanent(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -355,7 +339,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should restore all review details via gRPC handler")
         void shouldRestoreAllReviewDetails() {
-            // Given
+
             com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
 
             ApiResponse<Void> serviceResponse = ApiResponse.success("All review details restored successfully");
@@ -363,11 +347,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.restoreAll())
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewAll response = 
-                    handler.restoreAllReviewDetail(request).await().indefinitely();
+            pb.review.ReviewCommon.ApiResponseReviewAll response = handler.restoreAllReviewDetail(request).await()
+                    .indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getMessage()).isEqualTo("All review details restored successfully");
@@ -376,7 +358,7 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should delete all review details permanently via gRPC handler")
         void shouldDeleteAllReviewDetailsPermanently() {
-            // Given
+
             com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
 
             ApiResponse<Void> serviceResponse = ApiResponse.success("All review details permanently deleted");
@@ -384,11 +366,9 @@ class ReviewDetailCommandGrpcHandlerTest {
             when(reviewDetailService.deleteAll())
                     .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewAll response = 
-                    handler.deleteAllReviewDetailPermanent(request).await().indefinitely();
+            pb.review.ReviewCommon.ApiResponseReviewAll response = handler.deleteAllReviewDetailPermanent(request)
+                    .await().indefinitely();
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getStatus()).isEqualTo("success");
             assertThat(response.getMessage()).isEqualTo("All review details permanently deleted");
@@ -397,14 +377,13 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should handle failure when restoring all review details")
         void shouldHandleFailureWhenRestoringAllReviewDetails() {
-            // Given
+
             com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
 
             RuntimeException exception = new RuntimeException("Database error");
             when(reviewDetailService.restoreAll())
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.restoreAllReviewDetail(request).await().indefinitely();
                 assertThat(false).isTrue();
@@ -416,14 +395,13 @@ class ReviewDetailCommandGrpcHandlerTest {
         @Test
         @DisplayName("Should handle failure when deleting all review details")
         void shouldHandleFailureWhenDeletingAllReviewDetails() {
-            // Given
+
             com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
 
             RuntimeException exception = new RuntimeException("Database error");
             when(reviewDetailService.deleteAll())
                     .thenReturn(Uni.createFrom().failure(exception));
 
-            // When & Then
             try {
                 handler.deleteAllReviewDetailPermanent(request).await().indefinitely();
                 assertThat(false).isTrue();

@@ -6,7 +6,9 @@ import com.sanedge.transaction.domain.requests.MonthAmountTransactionRequest;
 import com.sanedge.transaction.service.stats.TransactionAmountService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -29,6 +31,7 @@ public class TransactionAmountGrpcHandler extends MutinyTransactionAmountService
     TransactionAmountService transactionAmountService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionMonthAmountSuccess> getMonthlyAmountSuccess(pb.transaction.stats.TransactionAmount.MonthAmountTransactionRequest request) {
         MonthAmountTransactionRequest domainReq = new MonthAmountTransactionRequest();
         domainReq.setYear(request.getYear());
@@ -49,10 +52,11 @@ public class TransactionAmountGrpcHandler extends MutinyTransactionAmountService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionYearAmountSuccess> getYearlyAmountSuccess(YearAmountTransactionRequest request) {
         return transactionAmountService.findYearlyAmountSuccess(request.getYear())
                 .map(apiResp -> {
@@ -68,10 +72,11 @@ public class TransactionAmountGrpcHandler extends MutinyTransactionAmountService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionMonthAmountFailed> getMonthlyAmountFailed(pb.transaction.stats.TransactionAmount.MonthAmountTransactionRequest request) {
         MonthAmountTransactionRequest domainReq = new MonthAmountTransactionRequest();
         domainReq.setYear(request.getYear());
@@ -92,10 +97,11 @@ public class TransactionAmountGrpcHandler extends MutinyTransactionAmountService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionYearAmountFailed> getYearlyAmountFailed(YearAmountTransactionRequest request) {
         return transactionAmountService.findYearlyAmountFailed(request.getYear())
                 .map(apiResp -> {
@@ -111,6 +117,6 @@ public class TransactionAmountGrpcHandler extends MutinyTransactionAmountService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

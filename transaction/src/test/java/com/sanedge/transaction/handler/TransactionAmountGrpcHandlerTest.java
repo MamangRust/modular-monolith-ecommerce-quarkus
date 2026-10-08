@@ -18,7 +18,6 @@ import com.sanedge.transaction.domain.response.TransactionYearlyAmountFailedResp
 import com.sanedge.transaction.domain.response.TransactionYearlyAmountSuccessResponse;
 import com.sanedge.transaction.service.stats.TransactionAmountService;
 
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
 import pb.transaction.TransactionCommon;
@@ -27,126 +26,123 @@ import pb.transaction.stats.TransactionAmount;
 @ExtendWith(MockitoExtension.class)
 class TransactionAmountGrpcHandlerTest {
 
-    @Mock
-    private TransactionAmountService transactionAmountService;
+        @Mock
+        private TransactionAmountService transactionAmountService;
 
-    private TransactionAmountGrpcHandler handler;
+        private TransactionAmountGrpcHandler handler;
 
-    @BeforeEach
-    void setUp() {
-        handler = new TransactionAmountGrpcHandler();
-        handler.transactionAmountService = transactionAmountService;
-    }
-
-    // ========== getMonthlyAmountSuccess Tests ==========
-
-    @Test
-    @DisplayName("getMonthlyAmountSuccess - should return ApiResponseTransactionMonthAmountSuccess on success")
-    void getMonthlyAmountSuccess_Success() {
-        TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
-
-        TransactionMonthlyAmountSuccessResponse data = TransactionMonthlyAmountSuccessResponse.builder()
-                .year("2024").month("Jan").totalSuccess(10L).totalAmount(100000L).build();
-        ApiResponse<java.util.List<TransactionMonthlyAmountSuccessResponse>> apiResp = ApiResponse
-                .success("Monthly amount success retrieved successfully", java.util.List.of(data));
-
-        when(transactionAmountService.findMonthlyAmountSuccess(any())).thenReturn(Uni.createFrom().item(apiResp));
-
-        TransactionCommon.ApiResponseTransactionMonthAmountSuccess response = handler.getMonthlyAmountSuccess(request)
-                .await().indefinitely();
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("getMonthlyAmountSuccess - should return INTERNAL on failure")
-    void getMonthlyAmountSuccess_InternalError() {
-        TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
-
-        when(transactionAmountService.findMonthlyAmountSuccess(any()))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB error")));
-
-        StatusRuntimeException ex = null;
-        try {
-            handler.getMonthlyAmountSuccess(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            ex = e;
+        @BeforeEach
+        void setUp() {
+                handler = new TransactionAmountGrpcHandler();
+                handler.transactionAmountService = transactionAmountService;
         }
 
-        assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
-    }
+        @Test
+        @DisplayName("getMonthlyAmountSuccess - should return ApiResponseTransactionMonthAmountSuccess on success")
+        void getMonthlyAmountSuccess_Success() {
+                TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-    // ========== getYearlyAmountSuccess Tests ==========
+                TransactionMonthlyAmountSuccessResponse data = TransactionMonthlyAmountSuccessResponse.builder()
+                                .year("2024").month("Jan").totalSuccess(10L).totalAmount(100000L).build();
+                ApiResponse<java.util.List<TransactionMonthlyAmountSuccessResponse>> apiResp = ApiResponse
+                                .success("Monthly amount success retrieved successfully", java.util.List.of(data));
 
-    @Test
-    @DisplayName("getYearlyAmountSuccess - should return ApiResponseTransactionYearAmountSuccess on success")
-    void getYearlyAmountSuccess_Success() {
-        TransactionAmount.YearAmountTransactionRequest request = TransactionAmount.YearAmountTransactionRequest
-                .newBuilder().setYear(2024).build();
+                when(transactionAmountService.findMonthlyAmountSuccess(any()))
+                                .thenReturn(Uni.createFrom().item(apiResp));
 
-        TransactionYearlyAmountSuccessResponse data = TransactionYearlyAmountSuccessResponse.builder()
-                .year("2024").totalSuccess(100L).totalAmount(1000000L).build();
-        ApiResponse<java.util.List<TransactionYearlyAmountSuccessResponse>> apiResp = ApiResponse
-                .success("Yearly amount success retrieved successfully", java.util.List.of(data));
+                TransactionCommon.ApiResponseTransactionMonthAmountSuccess response = handler
+                                .getMonthlyAmountSuccess(request)
+                                .await().indefinitely();
 
-        when(transactionAmountService.findYearlyAmountSuccess(2024)).thenReturn(Uni.createFrom().item(apiResp));
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
 
-        TransactionCommon.ApiResponseTransactionYearAmountSuccess response = handler.getYearlyAmountSuccess(request)
-                .await().indefinitely();
+        @Test
+        @DisplayName("getMonthlyAmountSuccess - should return INTERNAL on failure")
+        void getMonthlyAmountSuccess_InternalError() {
+                TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
+                when(transactionAmountService.findMonthlyAmountSuccess(any()))
+                                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB error")));
 
-    // ========== getMonthlyAmountFailed Tests ==========
+                StatusRuntimeException ex = null;
+                try {
+                        handler.getMonthlyAmountSuccess(request).await().indefinitely();
+                } catch (StatusRuntimeException e) {
+                        ex = e;
+                }
 
-    @Test
-    @DisplayName("getMonthlyAmountFailed - should return ApiResponseTransactionMonthAmountFailed on success")
-    void getMonthlyAmountFailed_Success() {
-        TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
+                assertThat(ex).isNotNull();
+        }
 
-        TransactionMonthlyAmountFailedResponse data = TransactionMonthlyAmountFailedResponse.builder()
-                .year("2024").month("Jan").totalFailed(5L).totalAmount(50000L).build();
-        ApiResponse<java.util.List<TransactionMonthlyAmountFailedResponse>> apiResp = ApiResponse
-                .success("Monthly amount failed retrieved successfully", java.util.List.of(data));
+        @Test
+        @DisplayName("getYearlyAmountSuccess - should return ApiResponseTransactionYearAmountSuccess on success")
+        void getYearlyAmountSuccess_Success() {
+                TransactionAmount.YearAmountTransactionRequest request = TransactionAmount.YearAmountTransactionRequest
+                                .newBuilder().setYear(2024).build();
 
-        when(transactionAmountService.findMonthlyAmountFailed(any())).thenReturn(Uni.createFrom().item(apiResp));
+                TransactionYearlyAmountSuccessResponse data = TransactionYearlyAmountSuccessResponse.builder()
+                                .year("2024").totalSuccess(100L).totalAmount(1000000L).build();
+                ApiResponse<java.util.List<TransactionYearlyAmountSuccessResponse>> apiResp = ApiResponse
+                                .success("Yearly amount success retrieved successfully", java.util.List.of(data));
 
-        TransactionCommon.ApiResponseTransactionMonthAmountFailed response = handler.getMonthlyAmountFailed(request)
-                .await().indefinitely();
+                when(transactionAmountService.findYearlyAmountSuccess(2024)).thenReturn(Uni.createFrom().item(apiResp));
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
+                TransactionCommon.ApiResponseTransactionYearAmountSuccess response = handler
+                                .getYearlyAmountSuccess(request)
+                                .await().indefinitely();
 
-    // ========== getYearlyAmountFailed Tests ==========
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
 
-    @Test
-    @DisplayName("getYearlyAmountFailed - should return ApiResponseTransactionYearAmountFailed on success")
-    void getYearlyAmountFailed_Success() {
-        TransactionAmount.YearAmountTransactionRequest request = TransactionAmount.YearAmountTransactionRequest
-                .newBuilder().setYear(2024).build();
+        @Test
+        @DisplayName("getMonthlyAmountFailed - should return ApiResponseTransactionMonthAmountFailed on success")
+        void getMonthlyAmountFailed_Success() {
+                TransactionAmount.MonthAmountTransactionRequest request = TransactionAmount.MonthAmountTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-        TransactionYearlyAmountFailedResponse data = TransactionYearlyAmountFailedResponse.builder()
-                .year("2024").totalFailed(50L).totalAmount(500000L).build();
-        ApiResponse<java.util.List<TransactionYearlyAmountFailedResponse>> apiResp = ApiResponse
-                .success("Yearly amount failed retrieved successfully", java.util.List.of(data));
+                TransactionMonthlyAmountFailedResponse data = TransactionMonthlyAmountFailedResponse.builder()
+                                .year("2024").month("Jan").totalFailed(5L).totalAmount(50000L).build();
+                ApiResponse<java.util.List<TransactionMonthlyAmountFailedResponse>> apiResp = ApiResponse
+                                .success("Monthly amount failed retrieved successfully", java.util.List.of(data));
 
-        when(transactionAmountService.findYearlyAmountFailed(2024)).thenReturn(Uni.createFrom().item(apiResp));
+                when(transactionAmountService.findMonthlyAmountFailed(any()))
+                                .thenReturn(Uni.createFrom().item(apiResp));
 
-        TransactionCommon.ApiResponseTransactionYearAmountFailed response = handler.getYearlyAmountFailed(request)
-                .await().indefinitely();
+                TransactionCommon.ApiResponseTransactionMonthAmountFailed response = handler
+                                .getMonthlyAmountFailed(request)
+                                .await().indefinitely();
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("getYearlyAmountFailed - should return ApiResponseTransactionYearAmountFailed on success")
+        void getYearlyAmountFailed_Success() {
+                TransactionAmount.YearAmountTransactionRequest request = TransactionAmount.YearAmountTransactionRequest
+                                .newBuilder().setYear(2024).build();
+
+                TransactionYearlyAmountFailedResponse data = TransactionYearlyAmountFailedResponse.builder()
+                                .year("2024").totalFailed(50L).totalAmount(500000L).build();
+                ApiResponse<java.util.List<TransactionYearlyAmountFailedResponse>> apiResp = ApiResponse
+                                .success("Yearly amount failed retrieved successfully", java.util.List.of(data));
+
+                when(transactionAmountService.findYearlyAmountFailed(2024)).thenReturn(Uni.createFrom().item(apiResp));
+
+                TransactionCommon.ApiResponseTransactionYearAmountFailed response = handler
+                                .getYearlyAmountFailed(request)
+                                .await().indefinitely();
+
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
 }

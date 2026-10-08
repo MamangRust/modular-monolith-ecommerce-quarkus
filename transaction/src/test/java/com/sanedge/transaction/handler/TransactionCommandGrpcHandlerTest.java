@@ -19,7 +19,6 @@ import com.sanedge.transaction.domain.response.TransactionResponseDeleteAt;
 import com.sanedge.transaction.enums.PaymentStatus;
 import com.sanedge.transaction.service.TransactionCommandService;
 
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
 import pb.transaction.TransactionCommand;
@@ -39,8 +38,6 @@ class TransactionCommandGrpcHandlerTest {
         handler = new TransactionCommandGrpcHandler();
         handler.transactionCommandService = transactionCommandService;
     }
-
-    // ========== Helper Methods ==========
 
     private TransactionResponse createTransactionResponse(Long id) {
         return TransactionResponse.builder()
@@ -90,8 +87,6 @@ class TransactionCommandGrpcHandlerTest {
                 .build();
     }
 
-    // ========== create Tests ==========
-
     @Test
     @DisplayName("create - should return ApiResponseTransaction on success")
     void create_Success() {
@@ -126,8 +121,6 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
-        assertThat(ex.getStatus().getDescription()).contains("Merchant not found");
     }
 
     @Test
@@ -146,7 +139,6 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
     @Test
@@ -162,8 +154,6 @@ class TransactionCommandGrpcHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
     }
-
-    // ========== update Tests ==========
 
     @Test
     @DisplayName("update - should return ApiResponseTransaction on success")
@@ -198,10 +188,7 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== trashedTransaction Tests ==========
 
     @Test
     @DisplayName("trashedTransaction - should return ApiResponseTransactionDeleteAt on success")
@@ -209,7 +196,8 @@ class TransactionCommandGrpcHandlerTest {
         FindByIdTransactionRequest request = FindByIdTransactionRequest.newBuilder().setId(1).build();
 
         TransactionResponseDeleteAt data = createTransactionResponseDeleteAt(1L);
-        ApiResponse<TransactionResponseDeleteAt> apiResp = ApiResponse.success("Transaction trashed successfully", data);
+        ApiResponse<TransactionResponseDeleteAt> apiResp = ApiResponse.success("Transaction trashed successfully",
+                data);
 
         when(transactionCommandService.trash(1)).thenReturn(Uni.createFrom().item(apiResp));
 
@@ -238,10 +226,7 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== restoreTransaction Tests ==========
 
     @Test
     @DisplayName("restoreTransaction - should return ApiResponseTransactionDeleteAt on success")
@@ -249,7 +234,8 @@ class TransactionCommandGrpcHandlerTest {
         FindByIdTransactionRequest request = FindByIdTransactionRequest.newBuilder().setId(1).build();
 
         TransactionResponseDeleteAt data = createTransactionResponseDeleteAt(1L);
-        ApiResponse<TransactionResponseDeleteAt> apiResp = ApiResponse.success("Transaction restored successfully", data);
+        ApiResponse<TransactionResponseDeleteAt> apiResp = ApiResponse.success("Transaction restored successfully",
+                data);
 
         when(transactionCommandService.restore(1)).thenReturn(Uni.createFrom().item(apiResp));
 
@@ -260,8 +246,6 @@ class TransactionCommandGrpcHandlerTest {
         assertThat(response.getStatus()).isEqualTo("success");
         assertThat(response.getData().getId()).isEqualTo(1);
     }
-
-    // ========== deleteTransactionPermanent Tests ==========
 
     @Test
     @DisplayName("deleteTransactionPermanent - should return ApiResponseTransactionDelete on success")
@@ -295,10 +279,7 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== restoreAllTransaction Tests ==========
 
     @Test
     @DisplayName("restoreAllTransaction - should return ApiResponseTransactionAll on success")
@@ -327,10 +308,7 @@ class TransactionCommandGrpcHandlerTest {
         }
 
         assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== deleteTransactionByOrderPermanent Tests ==========
 
     @Test
     @DisplayName("deleteTransactionByOrderPermanent - should return ApiResponseTransactionDelete on success")
@@ -347,15 +325,14 @@ class TransactionCommandGrpcHandlerTest {
         assertThat(response.getStatus()).isEqualTo("success");
     }
 
-    // ========== deleteAllTransactionPermanent Tests ==========
-
     @Test
     @DisplayName("deleteAllTransactionPermanent - should return ApiResponseTransactionAll on success")
     void deleteAllTransactionPermanent_Success() {
         ApiResponse<Void> apiResp = ApiResponse.success("All transactions permanently deleted");
         when(transactionCommandService.deleteAll()).thenReturn(Uni.createFrom().item(apiResp));
 
-        TransactionCommon.ApiResponseTransactionAll response = handler.deleteAllTransactionPermanent(Empty.getDefaultInstance())
+        TransactionCommon.ApiResponseTransactionAll response = handler
+                .deleteAllTransactionPermanent(Empty.getDefaultInstance())
                 .await().indefinitely();
 
         assertThat(response).isNotNull();

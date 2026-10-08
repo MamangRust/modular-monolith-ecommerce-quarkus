@@ -7,7 +7,9 @@ import com.sanedge.order.domain.response.OrderYearlyResponse;
 import com.sanedge.order.service.OrderSoldoutService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -25,6 +27,7 @@ public class OrderRevenueGrpcHandler extends MutinyOrderRevenueServiceGrpc.Order
     OrderSoldoutService orderSoldoutService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderMonthly> findMonthlyRevenue(FindYearOrder request) {
         return orderSoldoutService.findMonthlyOrders(request.getYear(), request.getMonth())
                 .map(apiResp -> {
@@ -36,10 +39,11 @@ public class OrderRevenueGrpcHandler extends MutinyOrderRevenueServiceGrpc.Order
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderYearly> findYearlyRevenue(FindYearOrder request) {
         return orderSoldoutService.findYearlyOrders(request.getYear())
                 .map(apiResp -> {
@@ -51,7 +55,7 @@ public class OrderRevenueGrpcHandler extends MutinyOrderRevenueServiceGrpc.Order
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.order.OrderCommon.OrderMonthlyResponse toProto(OrderMonthlyResponse r) {

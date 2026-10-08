@@ -19,14 +19,14 @@ public class CategoryPriceRepository implements PanacheRepository<Category> {
         String sql = """
             WITH date_range AS (
                 SELECT
-                    PARSEDATETIME(CAST(:year AS VARCHAR) || '-01-01', 'yyyy-MM-dd') AS start_date,
-                    DATEADD('DAY', -1, DATEADD('YEAR', 1, PARSEDATETIME(CAST(:year AS VARCHAR) || '-01-01', 'yyyy-MM-dd'))) AS end_date
+                    MAKE_DATE(:year, 1, 1)::timestamp AS start_date,
+                    (MAKE_DATE(:year + 1, 1, 1) - INTERVAL '1 day')::timestamp AS end_date
             ),
             monthly_category_stats AS (
                 SELECT
                     c.id AS category_id,
                     c.name AS category_name,
-                    PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd') AS activity_month,
+                    DATE_TRUNC('month', o.created_at) AS activity_month,
                     COUNT(DISTINCT o.id) AS order_count,
                     SUM(oi.quantity) AS items_sold,
                     CAST(COALESCE(SUM(o.total_price), 0) AS BIGINT) AS total_revenue
@@ -46,10 +46,10 @@ public class CategoryPriceRepository implements PanacheRepository<Category> {
                     AND o.created_at BETWEEN (SELECT start_date FROM date_range)
                                         AND (SELECT end_date FROM date_range)
                 GROUP BY
-                    c.id, c.name, PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd')
+                    c.id, c.name, DATE_TRUNC('month', o.created_at)
             )
             SELECT
-                FORMATDATETIME(mcs.activity_month, 'MMM') AS "month",
+                TO_CHAR(mcs.activity_month, 'Mon') AS "month",
                 mcs.category_id AS categoryId,
                 mcs.category_name AS categoryName,
                 mcs.order_count AS orderCount,

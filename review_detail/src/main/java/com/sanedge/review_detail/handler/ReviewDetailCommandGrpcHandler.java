@@ -9,6 +9,7 @@ import com.sanedge.review_detail.domain.response.ReviewDetailResponseDeleteAt;
 import com.sanedge.review_detail.service.ReviewDetailService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import pb.review_detail.MutinyReviewDetailCommandServiceGrpc;
 import pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetail;
 import pb.review_detail.ReviewDetailCommon.ApiResponseReviewDetailDeleteAt;
 import pb.review_detail.ReviewDetailCommon.FindByIdReviewDetailRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -28,6 +30,9 @@ public class ReviewDetailCommandGrpcHandler
 
     @Override
     public Uni<ApiResponseReviewDetail> create(pb.review_detail.ReviewDetailCommand.CreateReviewDetailRequest request) {
+        if (request.getReviewId() <= 0) {
+            return IdValidator.invalid("Review id");
+        }
         CreateReviewDetailRequest domainReq = new CreateReviewDetailRequest();
         domainReq.setReviewId(request.getReviewId());
         domainReq.setType(request.getType());
@@ -44,11 +49,14 @@ public class ReviewDetailCommandGrpcHandler
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseReviewDetail> update(pb.review_detail.ReviewDetailCommand.UpdateReviewDetailRequest request) {
+        if (request.getReviewDetailId() <= 0) {
+            return IdValidator.invalid("ReviewDetail id");
+        }
         UpdateReviewDetailRequest domainReq = new UpdateReviewDetailRequest();
         domainReq.setReviewDetailId(request.getReviewDetailId());
         domainReq.setType(request.getType());
@@ -69,12 +77,15 @@ public class ReviewDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseReviewDetailDeleteAt> trashedReviewDetail(FindByIdReviewDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewDetailService.trash(request.getId())
                 .map(apiResp -> {
                     ApiResponseReviewDetailDeleteAt.Builder builder = ApiResponseReviewDetailDeleteAt.newBuilder()
@@ -89,12 +100,15 @@ public class ReviewDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseReviewDetailDeleteAt> restoreReviewDetail(FindByIdReviewDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewDetailService.restore(request.getId())
                 .map(apiResp -> {
                     ApiResponseReviewDetailDeleteAt.Builder builder = ApiResponseReviewDetailDeleteAt.newBuilder()
@@ -109,13 +123,16 @@ public class ReviewDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<pb.review.ReviewCommon.ApiResponseReviewDelete> deleteReviewDetailPermanent(
             FindByIdReviewDetailRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewDetailService.delete(request.getId())
                 .map(apiResp -> pb.review.ReviewCommon.ApiResponseReviewDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -125,7 +142,7 @@ public class ReviewDetailCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -136,7 +153,7 @@ public class ReviewDetailCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -147,7 +164,7 @@ public class ReviewDetailCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.review_detail.ReviewDetailCommon.ReviewDetailsResponse toProto(ReviewDetailResponse r) {

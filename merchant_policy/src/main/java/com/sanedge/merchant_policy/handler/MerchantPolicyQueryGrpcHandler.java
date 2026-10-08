@@ -1,32 +1,36 @@
 package com.sanedge.merchant_policy.handler;
 
-import java.util.List;
-
 import com.sanedge.merchant_policy.domain.requests.FindAllMerchantRequest;
 import com.sanedge.merchant_policy.domain.response.MerchantPoliciesResponse;
 import com.sanedge.merchant_policy.domain.response.MerchantPoliciesResponseDeleteAt;
 import com.sanedge.merchant_policy.service.MerchantPolicyQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import pb.merchant_policy.MutinyMerchantPolicyQueryServiceGrpc;
 import pb.merchant_policy.MerchantPolicyCommon.ApiResponseMerchantPolicies;
 import pb.merchant_policy.MerchantPolicyCommon.ApiResponsePaginationMerchantPolicies;
 import pb.merchant_policy.MerchantPolicyCommon.ApiResponsePaginationMerchantPoliciesDeleteAt;
 import pb.merchant_policy.MerchantPolicyCommon.FindByIdMerchantPoliciesRequest;
+import pb.merchant_policy.MutinyMerchantPolicyQueryServiceGrpc;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
-public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQueryServiceGrpc.MerchantPolicyQueryServiceImplBase {
+public class MerchantPolicyQueryGrpcHandler
+        extends MutinyMerchantPolicyQueryServiceGrpc.MerchantPolicyQueryServiceImplBase {
 
     @Inject
     MerchantPolicyQueryService merchantPolicyQueryService;
 
     @Override
-    public Uni<ApiResponsePaginationMerchantPolicies> findAll(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationMerchantPolicies> findAll(
+            pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
         domainReq.setPageSize(request.getPageSize());
@@ -34,7 +38,8 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
 
         return merchantPolicyQueryService.findAll(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantPolicies.Builder builder = ApiResponsePaginationMerchantPolicies.newBuilder()
+                    ApiResponsePaginationMerchantPolicies.Builder builder = ApiResponsePaginationMerchantPolicies
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -47,11 +52,15 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseMerchantPolicies> findById(FindByIdMerchantPoliciesRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantPolicyQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantPolicies.Builder builder = ApiResponseMerchantPolicies.newBuilder()
@@ -66,12 +75,14 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
-    public Uni<ApiResponsePaginationMerchantPoliciesDeleteAt> findByActive(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationMerchantPoliciesDeleteAt> findByActive(
+            pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
         domainReq.setPageSize(request.getPageSize());
@@ -79,7 +90,8 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
 
         return merchantPolicyQueryService.findByActive(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantPoliciesDeleteAt.Builder builder = ApiResponsePaginationMerchantPoliciesDeleteAt.newBuilder()
+                    ApiResponsePaginationMerchantPoliciesDeleteAt.Builder builder = ApiResponsePaginationMerchantPoliciesDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -92,11 +104,13 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
-    public Uni<ApiResponsePaginationMerchantPoliciesDeleteAt> findByTrashed(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationMerchantPoliciesDeleteAt> findByTrashed(
+            pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
         domainReq.setPageSize(request.getPageSize());
@@ -104,7 +118,8 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
 
         return merchantPolicyQueryService.findByTrashed(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantPoliciesDeleteAt.Builder builder = ApiResponsePaginationMerchantPoliciesDeleteAt.newBuilder()
+                    ApiResponsePaginationMerchantPoliciesDeleteAt.Builder builder = ApiResponsePaginationMerchantPoliciesDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -117,14 +132,15 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse toProto(MerchantPoliciesResponse r) {
         if (r == null) {
             return pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse.getDefaultInstance();
         }
-        pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse.Builder builder = pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse.newBuilder();
+        pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse.Builder builder = pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId().intValue());
         }
@@ -149,11 +165,13 @@ public class MerchantPolicyQueryGrpcHandler extends MutinyMerchantPolicyQuerySer
         return builder.build();
     }
 
-    private pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt toProto(MerchantPoliciesResponseDeleteAt r) {
+    private pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt toProto(
+            MerchantPoliciesResponseDeleteAt r) {
         if (r == null) {
             return pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt.getDefaultInstance();
         }
-        pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt.Builder builder = pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt.newBuilder();
+        pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt.Builder builder = pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponseDeleteAt
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId().intValue());
         }

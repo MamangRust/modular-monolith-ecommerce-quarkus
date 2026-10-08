@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
@@ -61,33 +62,22 @@ class RoleCommandServiceImplTest {
                 redisService,
                 tracingMetrics);
 
-        // Use reflection to inject roleQueryService if needed
         try {
             java.lang.reflect.Field roleQueryField = RoleCommandServiceImpl.class
                     .getDeclaredField("roleQueryService");
             roleQueryField.setAccessible(true);
             roleQueryField.set(roleCommandService, null);
         } catch (Exception e) {
-            // Ignore if field doesn't exist or already set
+
         }
 
-        // Mock tracing metrics to execute the supplier directly - use lenient for tests
-        // that don't use it
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
     }
 
-    // Helper Method untuk membuat role mock
     private Role createMockRole(Long id, String roleName) {
         Role role = new Role();
         role.id = id != null ? id.longValue() : null;
@@ -98,15 +88,12 @@ class RoleCommandServiceImplTest {
         return role;
     }
 
-    // Helper Method untuk membuat UserRole mock
     private com.sanedge.role.entity.UserRole createMockUserRole(Long userId, Long roleId) {
         com.sanedge.role.entity.UserRole userRole = new com.sanedge.role.entity.UserRole();
         userRole.setUserId(userId);
         userRole.setRole(createMockRole(roleId, "Role" + roleId));
         return userRole;
     }
-
-    // ========== createRole Tests ==========
 
     @Test
     void createRole_roleAlreadyExists_throwsResourceAlreadyExistsException() {
@@ -145,8 +132,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.data()).isNotNull();
         assertThat(response.data().getName()).isEqualTo("NewRole");
     }
-
-    // ========== updateRole Tests ==========
 
     @Test
     void updateRole_roleNotFound_throwsResourceNotFoundException() {
@@ -224,8 +209,6 @@ class RoleCommandServiceImplTest {
         verify(roleRepository, never()).persist(any(Role.class));
     }
 
-    // ========== trashRole Tests ==========
-
     @Test
     void trashRole_roleNotFound_throwsResourceNotFoundException() {
         Long roleId = 999L;
@@ -257,8 +240,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.data().getName()).isEqualTo("TrashedRole");
     }
 
-    // ========== restoreRole Tests ==========
-
     @Test
     void restoreRole_roleNotTrashed_throwsResourceNotFoundException() {
         Long roleId = 1L;
@@ -287,8 +268,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.data()).isNotNull();
         assertThat(response.data().getName()).isEqualTo("RestoredRole");
     }
-
-    // ========== deletePermanent Tests ==========
 
     @Test
     void deletePermanent_roleNotFoundOrNotTrashed_throwsInvalidRequestException() {
@@ -319,8 +298,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.message()).isEqualTo("Role deleted permanently");
     }
 
-    // ========== restoreAllTrashedRoles Tests ==========
-
     @Test
     void restoreAllTrashedRoles_noTrashedRoles_throwsResourceNotFoundException() {
         when(roleRepository.restoreAllDeleted()).thenReturn(Uni.createFrom().item(false));
@@ -343,8 +320,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.message()).contains("have been restored");
     }
-
-    // ========== deleteAllTrashedRoles Tests ==========
 
     @Test
     void deleteAllTrashedRoles_noTrashedRoles_throwsResourceNotFoundException() {
@@ -369,8 +344,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.message()).contains("deleted permanently");
     }
 
-    // ========== assignRoleToUser Tests ==========
-
     @Test
     void assignRoleToUser_success_assignsRole() {
         Long userId = 1L;
@@ -391,8 +364,6 @@ class RoleCommandServiceImplTest {
         assertThat(response.message()).isEqualTo("Role assigned to user successfully");
         assertThat(response.data()).isNotNull();
     }
-
-    // ========== removeRoleFromUser Tests ==========
 
     @Test
     void removeRoleFromUser_notFound_throwsResourceNotFoundException() {
@@ -418,5 +389,24 @@ class RoleCommandServiceImplTest {
 
         assertThat(response.status()).isEqualTo("success");
         assertThat(response.message()).isEqualTo("Role removed from user successfully");
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

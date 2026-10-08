@@ -5,12 +5,15 @@ import com.sanedge.cart.domain.response.CartResponse;
 import com.sanedge.cart.service.CartService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.cart.MutinyCartQueryServiceGrpc;
 import pb.cart.CartCommon.ApiResponsePaginationCart;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -20,7 +23,11 @@ public class CartQueryGrpcHandler extends MutinyCartQueryServiceGrpc.CartQuerySe
     CartService cartService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationCart> findAll(pb.cart.CartQuery.FindAllCartRequest request) {
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
         FindAllCartsRequest domainReq = new FindAllCartsRequest();
         domainReq.setUserId(request.getUserId());
         domainReq.setPage(request.getPage());
@@ -42,7 +49,7 @@ public class CartQueryGrpcHandler extends MutinyCartQueryServiceGrpc.CartQuerySe
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.cart.CartCommon.CartResponse toProto(CartResponse r) {

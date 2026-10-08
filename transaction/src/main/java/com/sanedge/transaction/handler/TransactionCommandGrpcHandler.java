@@ -5,6 +5,7 @@ import com.sanedge.transaction.domain.response.TransactionResponseDeleteAt;
 import com.sanedge.transaction.service.TransactionCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import pb.transaction.TransactionCommon.ApiResponseTransactionDeleteAt;
 import pb.transaction.TransactionCommon.FindByIdTransactionRequest;
 import pb.transaction.TransactionCommand.CreateTransactionRequest;
 import pb.transaction.TransactionCommand.UpdateTransactionRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -28,6 +30,12 @@ public class TransactionCommandGrpcHandler
 
     @Override
     public Uni<ApiResponseTransaction> create(CreateTransactionRequest request) {
+        if (request.getOrderId() <= 0) {
+            return IdValidator.invalid("Order id");
+        }
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         com.sanedge.transaction.domain.requests.CreateTransactionRequest domainReq = new com.sanedge.transaction.domain.requests.CreateTransactionRequest();
         domainReq.setOrderID(request.getOrderId());
         domainReq.setMerchantID(request.getMerchantId());
@@ -49,12 +57,21 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseTransaction> update(UpdateTransactionRequest request) {
+        if (request.getTransactionId() <= 0) {
+            return IdValidator.invalid("Transaction id");
+        }
+        if (request.getOrderId() <= 0) {
+            return IdValidator.invalid("Order id");
+        }
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         com.sanedge.transaction.domain.requests.UpdateTransactionRequest domainReq = new com.sanedge.transaction.domain.requests.UpdateTransactionRequest();
         domainReq.setTransactionID(request.getTransactionId());
         domainReq.setOrderID(request.getOrderId());
@@ -77,12 +94,15 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseTransactionDeleteAt> trashedTransaction(FindByIdTransactionRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return transactionCommandService.trash(request.getId())
                 .map(apiResp -> {
                     ApiResponseTransactionDeleteAt.Builder builder = ApiResponseTransactionDeleteAt.newBuilder()
@@ -97,12 +117,15 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseTransactionDeleteAt> restoreTransaction(FindByIdTransactionRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return transactionCommandService.restore(request.getId())
                 .map(apiResp -> {
                     ApiResponseTransactionDeleteAt.Builder builder = ApiResponseTransactionDeleteAt.newBuilder()
@@ -117,12 +140,15 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseTransactionDelete> deleteTransactionPermanent(FindByIdTransactionRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return transactionCommandService.delete(request.getId())
                 .map(apiResp -> ApiResponseTransactionDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -132,7 +158,7 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -143,11 +169,14 @@ public class TransactionCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseTransactionDelete> deleteTransactionByOrderPermanent(FindByIdTransactionRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return transactionCommandService.deleteByOrder(request.getId())
                 .map(apiResp -> ApiResponseTransactionDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -157,7 +186,7 @@ public class TransactionCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -168,7 +197,7 @@ public class TransactionCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.transaction.TransactionCommon.TransactionResponse toProto(TransactionResponse r) {

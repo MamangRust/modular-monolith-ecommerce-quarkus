@@ -1,0 +1,68 @@
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-08-20 02:12:31,591 WARN  [io.quarkus.config] (main) The "quarkus.vertx.worker-pool-size" config property is deprecated and should not be used anymore.
+2026-08-20 02:12:52,043 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@2168fb89; Operation:Query.
+2026-08-20 02:12:52,510 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@5ec41480; Failure: null.
+2026-08-20 02:12:52,639 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@3c9faabd; Operation:Query.
+2026-08-20 02:12:52,778 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@19e2da51; Failure: null.
+2026-08-20 02:12:52,869 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@613ca646; Operation:Query.
+2026-08-20 02:12:53,183 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@2f104eb9; Failure: null.
+2026-08-20 02:12:53,531 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@42517b4c; Operation:Query.
+2026-08-20 02:12:53,563 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@326edd62; Failure: null.
+2026-08-20 02:12:53,583 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@36e443ff; Operation:Query.
+2026-08-20 02:12:53,590 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@1bacb61c; Failure: null.
+2026-08-20 02:12:53,599 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@52ee353e; Operation:Query.
+2026-08-20 02:12:53,631 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@162f77cc; Failure: null.
+2026-08-20 02:12:53,668 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@5ee40726; Operation:Query.
+2026-08-20 02:12:53,798 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@680881a3; Failure: null.
+2026-08-20 02:12:54,543 WARN  [io.quarkus.grpc.runtime.GrpcServerRecorder] (main) Using legacy gRPC support with a separate HTTP server instance. This is the current default to maintain compatibility.
+You can switch to the new unified HTTP server by setting quarkus.grpc.server.use-separate-server=false
+This change is recommended for new applications and will become the default in future versions.
+
+2026-08-20 02:12:56,013 INFO  [io.quarkus.grpc.runtime.GrpcServerRecorder] (vert.x-eventloop-thread-4) Started gRPC server on 0.0.0.0:9011 [TLS enabled: false]
+2026-08-20 02:12:56,302 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:01,546 INFO  [com.sanedge.common.chaos.ChaosManager] (main) ✅ Chaos configuration successfully loaded/reloaded from chaos.yaml. Total policies: 121
+2026-08-20 02:13:01,869 INFO  [com.sanedge.common.chaos.ChaosManager] (main) 🛑 Halt command triggered: disabling all chaos policies.
+2026-08-20 02:13:01,870 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:03,625 ERROR [io.quarkus.runtime.Application] (main) Failed to start application: java.lang.RuntimeException: Failed to start quarkus
+	at io.quarkus.runner.ApplicationImpl.doStart(Unknown Source)
+	at io.quarkus.runtime.Application.start(Application.java:116)
+	at io.quarkus.runtime.ApplicationLifecycleManager.run(ApplicationLifecycleManager.java:119)
+	at io.quarkus.runtime.Quarkus.run(Quarkus.java:79)
+	at io.quarkus.runtime.Quarkus.run(Quarkus.java:50)
+	at io.quarkus.runtime.Quarkus.run(Quarkus.java:143)
+	at io.quarkus.runner.GeneratedMain.main(Unknown Source)
+	at io.quarkus.bootstrap.runner.QuarkusEntryPoint.doRun(QuarkusEntryPoint.java:86)
+	at io.quarkus.bootstrap.runner.QuarkusEntryPoint.main(QuarkusEntryPoint.java:37)
+Caused by: io.quarkus.arc.InactiveBeanException: Bean is not active: SYNTHETIC bean [class=io.quarkus.redis.datasource.ReactiveRedisDataSource, id=9JEfLbZPzdeLaQiWTMDNa7jdfrI]
+Reason: Redis Client '<default>' was deactivated automatically because neither the hosts nor the hostsProviderName is set. To activate the Redis Client, set the configuration property 'quarkus.redis.hosts' or 'quarkus.redis.hosts-provider-name'. Refer to https://quarkus.io/guides/redis-reference for guidance.
+
+To avoid this exception while keeping the bean inactive:
+	- Configure all extensions consuming this bean as inactive as well, if they allow it, e.g. 'quarkus.someextension.active=false'
+	- Make sure that custom code only accesses this bean if it is active
+	- Inject the bean with 'Instance<io.quarkus.redis.datasource.ReactiveRedisDataSource>' instead of 'io.quarkus.redis.datasource.ReactiveRedisDataSource'
+This bean is injected into:
+	- com.sanedge.common.config.RedisService#reactiveRedisDataSource
+	at io.quarkus.redis.datasource.ReactiveRedisDataSource_9JEfLbZPzdeLaQiWTMDNa7jdfrI_Synthetic_Bean.create(Unknown Source)
+	at io.quarkus.redis.datasource.ReactiveRedisDataSource_9JEfLbZPzdeLaQiWTMDNa7jdfrI_Synthetic_Bean.create(Unknown Source)
+	at io.quarkus.arc.impl.AbstractSharedContext.createInstanceHandle(AbstractSharedContext.java:119)
+	at io.quarkus.arc.impl.AbstractSharedContext$1.get(AbstractSharedContext.java:38)
+	at io.quarkus.arc.impl.AbstractSharedContext$1.get(AbstractSharedContext.java:35)
+	at io.quarkus.arc.generator.Default_jakarta_enterprise_context_ApplicationScoped_ContextInstances.ch8(Unknown Source)
+	at io.quarkus.arc.generator.Default_jakarta_enterprise_context_ApplicationScoped_ContextInstances.computeIfAbsent(Unknown Source)
+	at io.quarkus.arc.impl.AbstractSharedContext.get(AbstractSharedContext.java:35)
+	at io.quarkus.arc.impl.ClientProxies.getApplicationScopedDelegate(ClientProxies.java:23)
+	at io.quarkus.redis.datasource.ReactiveRedisDataSource_9JEfLbZPzdeLaQiWTMDNa7jdfrI_Synthetic_ClientProxy.arc$delegate(Unknown Source)
+	at io.quarkus.redis.datasource.ReactiveRedisDataSource_9JEfLbZPzdeLaQiWTMDNa7jdfrI_Synthetic_ClientProxy.arc_contextualInstance(Unknown Source)
+	at io.quarkus.redis.datasource.ReactiveRedisDataSource_Observer_Synthetic_7HbvncMExg4dADjgzZ6ex_nu6eI.notify(Unknown Source)
+	at io.quarkus.arc.impl.EventImpl$Notifier.notifyObservers(EventImpl.java:366)
+	at io.quarkus.arc.impl.EventImpl$Notifier.notify(EventImpl.java:348)
+	at io.quarkus.arc.impl.EventImpl.fire(EventImpl.java:81)
+	at io.quarkus.arc.runtime.ArcRecorder.fireLifecycleEvent(ArcRecorder.java:165)
+	at io.quarkus.arc.runtime.ArcRecorder.handleLifecycleEvents(ArcRecorder.java:115)
+	at io.quarkus.runner.recorded.LifecycleEventsBuildStep$startupEvent1144526294.deploy_0(Unknown Source)
+	at io.quarkus.runner.recorded.LifecycleEventsBuildStep$startupEvent1144526294.deploy(Unknown Source)
+	... 9 more
+

@@ -39,8 +39,6 @@ class CategoryTotalPriceGrpcHandlerTest {
         field.set(handler, categoryTotalPriceService);
     }
 
-    // ========== findMonthlyTotalPrices Tests ==========
-
     @Test
     void findMonthlyTotalPrices_success_returnsResponse() {
         CategoryCommon.FindYearMonthTotalPrices request = CategoryCommon.FindYearMonthTotalPrices.newBuilder()
@@ -84,8 +82,6 @@ class CategoryTotalPriceGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== findYearlyTotalPrices Tests ==========
 
     @Test
     void findYearlyTotalPrices_success_returnsResponse() {

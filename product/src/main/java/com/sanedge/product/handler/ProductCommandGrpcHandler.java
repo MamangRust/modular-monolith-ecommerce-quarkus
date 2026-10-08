@@ -3,6 +3,7 @@ package com.sanedge.product.handler;
 import com.sanedge.product.service.ProductCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -13,6 +14,7 @@ import pb.product.ProductCommon.ApiResponseProductAll;
 import pb.product.ProductCommon.ApiResponseProductDelete;
 import pb.product.ProductCommon.ApiResponseProductDeleteAt;
 import pb.product.ProductCommon.FindByIdProductRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -23,6 +25,12 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
 
     @Override
     public Uni<ApiResponseProduct> create(pb.product.ProductCommand.CreateProductRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         com.sanedge.product.domain.requests.CreateProductRequest domainReq = new com.sanedge.product.domain.requests.CreateProductRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setCategoryId(request.getCategoryId());
@@ -50,12 +58,21 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceAlreadyExistsException) {
                         return Status.ALREADY_EXISTS.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseProduct> update(pb.product.ProductCommand.UpdateProductRequest request) {
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         com.sanedge.product.domain.requests.UpdateProductRequest domainReq = new com.sanedge.product.domain.requests.UpdateProductRequest();
         domainReq.setProductId(request.getProductId());
         domainReq.setMerchantId(request.getMerchantId());
@@ -84,13 +101,16 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseProduct> updateProductCountStock(
             pb.product.ProductCommand.UpdateProductCountStockRequest request) {
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
         return productCommandService.updateProductCountStock(request.getProductId(), request.getStock())
                 .map(apiResp -> {
                     ApiResponseProduct.Builder builder = ApiResponseProduct.newBuilder()
@@ -105,12 +125,33 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    public Uni<ApiResponseProduct> adjustStock(pb.product.ProductCommand.AdjustProductStockRequest request) {
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
+        return productCommandService.adjustStock(request.getProductId(), request.getDelta())
+                .map(apiResp -> {
+                    ApiResponseProduct.Builder builder = ApiResponseProduct.newBuilder()
+                            .setStatus(apiResp.status())
+                            .setMessage(apiResp.message());
+                    if (apiResp.data() != null) {
+                        builder.setData(toProto(apiResp.data()));
+                    }
+                    return builder.build();
+                })
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
+    }
+
+    @Override
     public Uni<ApiResponseProductDeleteAt> trashedProduct(FindByIdProductRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return productCommandService.trashedProduct(request.getId())
                 .map(apiResp -> {
                     ApiResponseProductDeleteAt.Builder builder = ApiResponseProductDeleteAt.newBuilder()
@@ -125,12 +166,15 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseProductDeleteAt> restoreProduct(FindByIdProductRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return productCommandService.restoreProduct(request.getId())
                 .map(apiResp -> {
                     ApiResponseProductDeleteAt.Builder builder = ApiResponseProductDeleteAt.newBuilder()
@@ -145,12 +189,15 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseProductDelete> deleteProductPermanent(FindByIdProductRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return productCommandService.deleteProductPermanent(request.getId())
                 .map(apiResp -> ApiResponseProductDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -160,7 +207,7 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -171,7 +218,7 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -181,7 +228,7 @@ public class ProductCommandGrpcHandler extends MutinyProductCommandServiceGrpc.P
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.product.ProductCommon.ProductResponse toProto(com.sanedge.product.domain.response.ProductResponse r) {

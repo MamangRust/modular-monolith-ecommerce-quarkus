@@ -1,0 +1,27 @@
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-08-20 02:12:51,352 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@5413fdec; Operation:Query.
+2026-08-20 02:12:51,664 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@723f96ed; Failure: null.
+2026-08-20 02:12:51,707 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@f5e93b1; Operation:Query.
+2026-08-20 02:12:51,761 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@290ebc1d; Failure: null.
+2026-08-20 02:12:51,891 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@6fe574ad; Operation:Query.
+2026-08-20 02:12:52,277 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@3f7b0645; Failure: null.
+2026-08-20 02:12:52,873 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@59e9d97d; Operation:Query.
+2026-08-20 02:12:52,937 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@6e8201ad; Failure: null.
+2026-08-20 02:12:52,938 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@11113685; Operation:Query.
+2026-08-20 02:12:52,948 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@33885e19; Failure: null.
+2026-08-20 02:12:57,082 WARN  [io.quarkus.grpc.runtime.GrpcServerRecorder] (main) Using legacy gRPC support with a separate HTTP server instance. This is the current default to maintain compatibility.
+You can switch to the new unified HTTP server by setting quarkus.grpc.server.use-separate-server=false
+This change is recommended for new applications and will become the default in future versions.
+
+2026-08-20 02:13:00,640 INFO  [io.quarkus.grpc.runtime.GrpcServerRecorder] (vert.x-eventloop-thread-4) Started gRPC server on 0.0.0.0:9019 [TLS enabled: false]
+2026-08-20 02:13:01,385 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:07,092 INFO  [com.sanedge.common.chaos.ChaosManager] (main) ✅ Chaos configuration successfully loaded/reloaded from chaos.yaml. Total policies: 121
+2026-08-20 02:13:07,784 INFO  [io.quarkus] (main) order-item-service 1.0.0-SNAPSHOT on JVM (powered by Quarkus 3.31.3) started in 92.489s. Listening on: http://0.0.0.0:8086
+2026-08-20 02:13:07,786 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-08-20 02:13:07,787 INFO  [io.quarkus] (main) Installed features: [cdi, grpc-client, grpc-server, hibernate-orm, hibernate-reactive, hibernate-reactive-panache, hibernate-validator, opentelemetry, reactive-pg-client, redis-client, rest, rest-jackson, security, smallrye-context-propagation, smallrye-health, smallrye-jwt, vertx]
+2026-08-20 02:31:34,217 INFO  [com.sanedge.common.chaos.ChaosManager] (Shutdown thread) 🛑 Halt command triggered: disabling all chaos policies.
+2026-08-20 02:31:34,218 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (Shutdown thread) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:31:34,317 INFO  [io.quarkus] (Shutdown thread) order-item-service stopped in 0.162s

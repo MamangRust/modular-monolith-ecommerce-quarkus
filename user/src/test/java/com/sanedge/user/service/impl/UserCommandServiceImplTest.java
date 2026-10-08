@@ -17,6 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.sanedge.common.adapter.role.RolePort;
+import com.sanedge.common.adapter.user_role.UserRolePort;
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.exception.InvalidRequestException;
@@ -33,8 +35,6 @@ import com.sanedge.user.repository.UserRepository;
 
 import io.opentelemetry.api.common.Attributes;
 import io.smallrye.mutiny.Uni;
-import pb.role.RoleCommandService;
-import pb.role.RoleQueryService;
 
 @ExtendWith(MockitoExtension.class)
 class UserCommandServiceImplTest {
@@ -52,10 +52,10 @@ class UserCommandServiceImplTest {
     private TracingMetrics tracingMetrics;
 
     @Mock
-    private RoleQueryService roleQueryService;
+    private RolePort rolePort;
 
     @Mock
-    private RoleCommandService roleCommandService;
+    private UserRolePort userRolePort;
 
     private UserCommandServiceImpl userCommandService;
 
@@ -67,37 +67,29 @@ class UserCommandServiceImplTest {
                 redisService,
                 tracingMetrics);
 
-        // Use reflection to inject gRPC clients
         try {
-            java.lang.reflect.Field roleQueryField = UserCommandServiceImpl.class.getDeclaredField("roleQueryService");
+            java.lang.reflect.Field roleQueryField = UserCommandServiceImpl.class.getDeclaredField("rolePort");
             roleQueryField.setAccessible(true);
-            roleQueryField.set(userCommandService, roleQueryService);
+            roleQueryField.set(userCommandService, rolePort);
 
             java.lang.reflect.Field roleCommandField = UserCommandServiceImpl.class
-                    .getDeclaredField("roleCommandService");
+                    .getDeclaredField("userRolePort");
             roleCommandField.setAccessible(true);
-            roleCommandField.set(userCommandService, roleCommandService);
+            roleCommandField.set(userCommandService, userRolePort);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
 
-        // Mock tracing metrics to execute the supplier directly - use lenient for tests
-        // that don't use it
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
-
-    // ========== createUser Tests ==========
 
     @Test
     void createUser_passwordMismatch_throwsInvalidRequestException() {
@@ -109,7 +101,6 @@ class UserCommandServiceImplTest {
         request.setFirstname("John");
         request.setLastname("Doe");
 
-        // The exception is thrown synchronously
         try {
             userCommandService.createUser(request).await().indefinitely();
             org.junit.jupiter.api.Assertions.fail("Expected InvalidRequestException");
@@ -169,22 +160,6 @@ class UserCommandServiceImplTest {
         request.setFirstname("John");
         request.setLastname("Doe");
 
-        // Mock gRPC role query for default ROLE_ADMIN
-        pb.role.RoleQuery.FindByNameRoleRequest requestProto = pb.role.RoleQuery.FindByNameRoleRequest.newBuilder()
-                .setName("ROLE_ADMIN")
-                .build();
-        pb.role.RoleCommon.ApiResponseRole responseProto = pb.role.RoleCommon.ApiResponseRole.newBuilder()
-                .setStatus("success")
-                .setMessage("Role found")
-                .setData(pb.role.RoleCommon.RoleResponse.newBuilder()
-                        .setId(1)
-                        .setName("ROLE_ADMIN")
-                        .build())
-                .build();
-
-        lenient().when(roleQueryService.findByNameRole(requestProto)).thenReturn(Uni.createFrom().item(responseProto));
-
-        // Mock persist to return a user with id set
         lenient().when(userRepository.persist(any(User.class))).thenAnswer(invocation -> {
             User userToPersist = invocation.getArgument(0);
             userToPersist.id = 1L;
@@ -202,8 +177,6 @@ class UserCommandServiceImplTest {
         assertThat(response.data()).isNotNull();
         assertThat(response.data().getUsername()).isEqualTo("newuser");
     }
-
-    // ========== updateUser Tests ==========
 
     @Test
     void updateUser_userNotFound_throwsResourceNotFoundException() {
@@ -280,8 +253,6 @@ class UserCommandServiceImplTest {
         }
     }
 
-    // ========== trashUser Tests ==========
-
     @Test
     void trashUser_userNotFound_throwsResourceNotFoundException() {
         when(userRepository.trash(999L)).thenReturn(Uni.createFrom().nullItem());
@@ -314,8 +285,6 @@ class UserCommandServiceImplTest {
         assertThat(response.data()).isNotNull();
     }
 
-    // ========== restoreUser Tests ==========
-
     @Test
     void restoreUser_userNotFound_throwsResourceNotFoundException() {
         when(userRepository.restore(999L)).thenReturn(Uni.createFrom().nullItem());
@@ -346,8 +315,6 @@ class UserCommandServiceImplTest {
         assertThat(response.message()).isEqualTo("User restored successfully");
         assertThat(response.data()).isNotNull();
     }
-
-    // ========== deletePermanent Tests ==========
 
     @Test
     void deletePermanent_success_deletesUser() {

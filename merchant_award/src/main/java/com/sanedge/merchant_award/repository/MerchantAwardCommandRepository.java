@@ -37,13 +37,13 @@ public class MerchantAwardCommandRepository implements PanacheRepository<Merchan
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long merchantAwardId) {
+    public Uni<MerchantCertificationAndAward> deletePermanent(Long merchantAwardId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", merchantAwardId).firstResult()
                 .chain(award -> {
                     if (award != null) {
-                        return delete(award).map(v -> true);
+                        return delete(award).map(v -> award);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

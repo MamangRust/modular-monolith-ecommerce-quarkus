@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.sanedge.category.domain.requests.CreateCategoryRequest;
 import com.sanedge.category.domain.requests.UpdateCategoryRequest;
@@ -50,6 +51,17 @@ class CategoryCommandServiceImplTest {
 
     private CategoryCommandServiceImpl service;
 
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier) {
+                    return ((Supplier<Uni<?>>) arg).get();
+                }
+            }
+            return Uni.createFrom().nullItem();
+        };
+    }
+
     @BeforeEach
     void setUp() {
         service = new CategoryCommandServiceImpl(
@@ -58,20 +70,17 @@ class CategoryCommandServiceImplTest {
                 redisService,
                 tracingMetrics);
 
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
-
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
 
         lenient()
                 .when(redisService.deleteReactive(anyString()))
@@ -89,8 +98,6 @@ class CategoryCommandServiceImplTest {
         c.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
         return c;
     }
-
-    // ========== createCategory Tests ==========
 
     @Test
     void createCategory_success_returnsNewCategory() {
@@ -114,8 +121,6 @@ class CategoryCommandServiceImplTest {
         assertThat(result.data()).isNotNull();
         assertThat(result.data().getName()).isEqualTo("Electronics");
     }
-
-    // ========== updateCategory Tests ==========
 
     @Test
     void updateCategory_success_returnsUpdatedCategory() {
@@ -169,8 +174,6 @@ class CategoryCommandServiceImplTest {
         }
     }
 
-    // ========== trashedCategory Tests ==========
-
     @Test
     void trashedCategory_success_returnsTrashedCategory() {
         Category trashed = createMockCategory(1L, "Electronics");
@@ -196,8 +199,6 @@ class CategoryCommandServiceImplTest {
         }
     }
 
-    // ========== restoreCategory Tests ==========
-
     @Test
     void restoreCategory_success_returnsRestoredCategory() {
         Category restored = createMockCategory(1L, "Electronics");
@@ -220,8 +221,6 @@ class CategoryCommandServiceImplTest {
             assertThat(e.getMessage()).contains("Restore category not found");
         }
     }
-
-    // ========== deleteCategoryPermanent Tests ==========
 
     @Test
     void deleteCategoryPermanent_success_returnsSuccess() {
@@ -247,8 +246,6 @@ class CategoryCommandServiceImplTest {
         }
     }
 
-    // ========== restoreAllCategories Tests ==========
-
     @Test
     void restoreAllCategories_success_returnsSuccess() {
         when(categoryCommandRepository.restoreAllDeleted()).thenReturn(Uni.createFrom().item(true));
@@ -270,8 +267,6 @@ class CategoryCommandServiceImplTest {
             assertThat(e.getMessage()).contains("No trashed categories found");
         }
     }
-
-    // ========== deleteAllCategoriesPermanent Tests ==========
 
     @Test
     void deleteAllCategoriesPermanent_success_returnsSuccess() {

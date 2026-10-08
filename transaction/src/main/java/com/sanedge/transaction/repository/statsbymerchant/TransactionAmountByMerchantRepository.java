@@ -8,6 +8,7 @@ import com.sanedge.transaction.entity.TransactionMonthlyAmountFailed;
 import com.sanedge.transaction.entity.TransactionMonthlyAmountSuccess;
 import com.sanedge.transaction.entity.TransactionYearlyAmountFailed;
 import com.sanedge.transaction.entity.TransactionYearlyAmountSuccess;
+import com.sanedge.transaction.domain.requests.FindMonthlyAmountByMerchantRequest;
 
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
@@ -17,10 +18,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class TransactionAmountByMerchantRepository implements PanacheRepository<Transaction> {
 
-    public Uni<List<TransactionMonthlyAmountSuccess>> findMonthlySuccessByMerchant(
-            Long merchantId,
-            Integer year,
-            Integer month) {
+    public Uni<List<TransactionMonthlyAmountSuccess>> findMonthlySuccessByMerchant(FindMonthlyAmountByMerchantRequest req) {
+        Long merchantId = req.getMerchantId();
+        Integer year = req.getYear();
+        Integer month = req.getMonth();
+
         java.time.LocalDate currentMonth = java.time.LocalDate.of(year, month, 1);
         java.time.LocalDate prevMonthDate = currentMonth.minusMonths(1);
 
@@ -39,53 +41,59 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                     WHERE
                         t.deleted_at IS NULL
                         AND t.payment_status = 'SUCCESS'
-                        AND t.merchant_id = :merchantId
+                        AND t.merchant_id = ?1
                         AND (
-                            (t.created_at >= PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')
-                             AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')))
+                            (t.created_at >= MAKE_DATE(?2, ?3, 1)
+                             AND t.created_at < (MAKE_DATE(?2, ?3, 1) + INTERVAL '1 month'))
                             OR
-                            (t.created_at >= PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')
-                             AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')))
+                            (t.created_at >= MAKE_DATE(?4, ?5, 1)
+                             AND t.created_at < (MAKE_DATE(?4, ?5, 1) + INTERVAL '1 month'))
                         )
-                    GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER), CAST(EXTRACT(MONTH FROM t.created_at) AS INTEGER)
+                    GROUP BY 1, 2
                 ),
                 formatted_data AS (
                     SELECT
                         CAST("year" AS VARCHAR) AS "year",
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST("month" AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM') AS "month",
+                        TO_CHAR(MAKE_DATE(2000, "month", 1), 'Mon') AS "month",
                         total_success AS totalSuccess,
-                        total_amount AS totalAmount
+                        total_amount AS totalAmount,
+                        "year" AS "sort_year",
+                        "month" AS "sort_month"
                     FROM monthly_data
                     UNION ALL
                     SELECT
-                        CAST(:year AS VARCHAR),
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM'),
-                        0, 0
+                        ?6,
+                        TO_CHAR(MAKE_DATE(2000, ?3, 1), 'Mon'),
+                        0, 0, ?2, ?3
                     WHERE NOT EXISTS (
                         SELECT 1 FROM monthly_data
-                        WHERE "year" = :year AND "month" = :month
+                        WHERE CAST("year" AS VARCHAR) = ?6 AND CAST("month" AS VARCHAR) = ?7
                     )
                     UNION ALL
                     SELECT
-                        CAST(:prevYear AS VARCHAR),
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM'),
-                        0, 0
+                        ?8,
+                        TO_CHAR(MAKE_DATE(2000, ?5, 1), 'Mon'),
+                        0, 0, ?4, ?5
                     WHERE NOT EXISTS (
                         SELECT 1 FROM monthly_data
-                        WHERE "year" = :prevYear AND "month" = :prevMonth
+                        WHERE CAST("year" AS VARCHAR) = ?8 AND CAST("month" AS VARCHAR) = ?9
                     )
                 )
             SELECT * FROM formatted_data
-            ORDER BY "year" DESC, "month" DESC
+            ORDER BY "sort_year" DESC, "sort_month" DESC
             """;
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("merchantId", merchantId);
-            dataQuery.setParameter("year", year);
-            dataQuery.setParameter("month", month);
-            dataQuery.setParameter("prevYear", prevYear);
-            dataQuery.setParameter("prevMonth", prevMonth);
+            dataQuery.setParameter(1, merchantId);
+            dataQuery.setParameter(2, year);
+            dataQuery.setParameter(3, month);
+            dataQuery.setParameter(4, prevYear);
+            dataQuery.setParameter(5, prevMonth);
+            dataQuery.setParameter(6, year.toString());
+            dataQuery.setParameter(7, month.toString());
+            dataQuery.setParameter(8, prevYear.toString());
+            dataQuery.setParameter(9, prevMonth.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionMonthlyAmountSuccess> list = new ArrayList<>();
@@ -106,6 +114,7 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
     public Uni<List<TransactionYearlyAmountSuccess>> findYearlySuccessByMerchant(
             Long merchantId,
             Integer year) {
+        Integer prevYear = year - 1;
 
         String sql = """
             WITH
@@ -118,10 +127,10 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                     WHERE
                         t.deleted_at IS NULL
                         AND t.payment_status = 'SUCCESS'
-                        AND t.merchant_id = :merchantId
-                        AND (EXTRACT(YEAR FROM t.created_at) = :year
-                             OR EXTRACT(YEAR FROM t.created_at) = :year - 1)
-                    GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER)
+                        AND t.merchant_id = ?1
+                        AND (EXTRACT(YEAR FROM t.created_at) = ?2
+                             OR EXTRACT(YEAR FROM t.created_at) = ?2 - 1)
+                    GROUP BY 1
                 ),
                 formatted_data AS (
                     SELECT
@@ -130,9 +139,9 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                         total_amount AS totalAmount
                     FROM yearly_data
                     UNION ALL
-                    SELECT CAST(:year AS VARCHAR), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year)
+                    SELECT ?3, 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?3)
                     UNION ALL
-                    SELECT CAST((:year - 1) AS VARCHAR), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year - 1)
+                    SELECT ?4, 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?4)
                 )
             SELECT * FROM formatted_data
             ORDER BY "year" DESC
@@ -140,8 +149,10 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("merchantId", merchantId);
-            dataQuery.setParameter("year", year);
+            dataQuery.setParameter(1, merchantId);
+            dataQuery.setParameter(2, year);
+            dataQuery.setParameter(3, year.toString());
+            dataQuery.setParameter(4, prevYear.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionYearlyAmountSuccess> list = new ArrayList<>();
@@ -158,10 +169,11 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
         });
     }
 
-    public Uni<List<TransactionMonthlyAmountFailed>> findMonthlyFailedByMerchant(
-            Long merchantId,
-            Integer year,
-            Integer month) {
+    public Uni<List<TransactionMonthlyAmountFailed>> findMonthlyFailedByMerchant(FindMonthlyAmountByMerchantRequest req) {
+        Long merchantId = req.getMerchantId();
+        Integer year = req.getYear();
+        Integer month = req.getMonth();
+
         java.time.LocalDate currentMonth = java.time.LocalDate.of(year, month, 1);
         java.time.LocalDate prevMonthDate = currentMonth.minusMonths(1);
 
@@ -180,53 +192,59 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                     WHERE
                         t.deleted_at IS NULL
                         AND t.payment_status = 'FAILED'
-                        AND t.merchant_id = :merchantId
+                        AND t.merchant_id = ?1
                         AND (
-                            (t.created_at >= PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')
-                             AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')))
+                            (t.created_at >= MAKE_DATE(?2, ?3, 1)
+                             AND t.created_at < (MAKE_DATE(?2, ?3, 1) + INTERVAL '1 month'))
                             OR
-                            (t.created_at >= PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')
-                             AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd')))
+                            (t.created_at >= MAKE_DATE(?4, ?5, 1)
+                             AND t.created_at < (MAKE_DATE(?4, ?5, 1) + INTERVAL '1 month'))
                         )
-                    GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER), CAST(EXTRACT(MONTH FROM t.created_at) AS INTEGER)
+                    GROUP BY 1, 2
                 ),
                 formatted_data AS (
                     SELECT
                         CAST("year" AS VARCHAR) AS "year",
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST("month" AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM') AS "month",
+                        TO_CHAR(MAKE_DATE(2000, "month", 1), 'Mon') AS "month",
                         total_failed AS totalFailed,
-                        total_amount AS totalAmount
+                        total_amount AS totalAmount,
+                        "year" AS "sort_year",
+                        "month" AS "sort_month"
                     FROM monthly_data
                     UNION ALL
                     SELECT
-                        CAST(:year AS VARCHAR),
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:month AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM'),
-                        0, 0
+                        ?6,
+                        TO_CHAR(MAKE_DATE(2000, ?3, 1), 'Mon'),
+                        0, 0, ?2, ?3
                     WHERE NOT EXISTS (
                         SELECT 1 FROM monthly_data
-                        WHERE "year" = :year AND "month" = :month
+                        WHERE CAST("year" AS VARCHAR) = ?6 AND CAST("month" AS VARCHAR) = ?7
                     )
                     UNION ALL
                     SELECT
-                        CAST(:prevYear AS VARCHAR),
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:prevMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM'),
-                        0, 0
+                        ?8,
+                        TO_CHAR(MAKE_DATE(2000, ?5, 1), 'Mon'),
+                        0, 0, ?4, ?5
                     WHERE NOT EXISTS (
                         SELECT 1 FROM monthly_data
-                        WHERE "year" = :prevYear AND "month" = :prevMonth
+                        WHERE CAST("year" AS VARCHAR) = ?8 AND CAST("month" AS VARCHAR) = ?9
                     )
                 )
             SELECT * FROM formatted_data
-            ORDER BY "year" DESC, "month" DESC
+            ORDER BY "sort_year" DESC, "sort_month" DESC
             """;
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("merchantId", merchantId);
-            dataQuery.setParameter("year", year);
-            dataQuery.setParameter("month", month);
-            dataQuery.setParameter("prevYear", prevYear);
-            dataQuery.setParameter("prevMonth", prevMonth);
+            dataQuery.setParameter(1, merchantId);
+            dataQuery.setParameter(2, year);
+            dataQuery.setParameter(3, month);
+            dataQuery.setParameter(4, prevYear);
+            dataQuery.setParameter(5, prevMonth);
+            dataQuery.setParameter(6, year.toString());
+            dataQuery.setParameter(7, month.toString());
+            dataQuery.setParameter(8, prevYear.toString());
+            dataQuery.setParameter(9, prevMonth.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionMonthlyAmountFailed> list = new ArrayList<>();
@@ -247,6 +265,7 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
     public Uni<List<TransactionYearlyAmountFailed>> findYearlyFailedByMerchant(
             Long merchantId,
             Integer year) {
+        Integer prevYear = year - 1;
 
         String sql = """
             WITH
@@ -259,10 +278,10 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                     WHERE
                         t.deleted_at IS NULL
                         AND t.payment_status = 'FAILED'
-                        AND t.merchant_id = :merchantId
-                        AND (EXTRACT(YEAR FROM t.created_at) = :year
-                             OR EXTRACT(YEAR FROM t.created_at) = :year - 1)
-                    GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER)
+                        AND t.merchant_id = ?1
+                        AND (EXTRACT(YEAR FROM t.created_at) = ?2
+                             OR EXTRACT(YEAR FROM t.created_at) = ?2 - 1)
+                    GROUP BY 1
                 ),
                 formatted_data AS (
                     SELECT
@@ -271,9 +290,9 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
                         total_amount AS totalAmount
                     FROM yearly_data
                     UNION ALL
-                    SELECT CAST(:year AS VARCHAR), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year)
+                    SELECT ?3, 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?3)
                     UNION ALL
-                    SELECT CAST((:year - 1) AS VARCHAR), 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year - 1)
+                    SELECT ?4, 0, 0 WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?4)
                 )
             SELECT * FROM formatted_data
             ORDER BY "year" DESC
@@ -281,8 +300,10 @@ public class TransactionAmountByMerchantRepository implements PanacheRepository<
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("merchantId", merchantId);
-            dataQuery.setParameter("year", year);
+            dataQuery.setParameter(1, merchantId);
+            dataQuery.setParameter(2, year);
+            dataQuery.setParameter(3, year.toString());
+            dataQuery.setParameter(4, prevYear.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionYearlyAmountFailed> list = new ArrayList<>();

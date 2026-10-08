@@ -5,6 +5,7 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.sanedge.common.adapter.merchant.MerchantPort;
 import com.sanedge.common.config.RedisService;
 import com.sanedge.merchant_business.domain.requests.CreateMerchantBusinessRequest;
 import com.sanedge.merchant_business.domain.requests.UpdateMerchantBusinessRequest;
@@ -13,21 +14,13 @@ import com.sanedge.merchant_business.domain.response.MerchantBusinessResponse;
 import com.sanedge.merchant_business.domain.response.MerchantBusinessResponseDeleteAt;
 import com.sanedge.merchant_business.entity.MerchantBusinessInformation;
 import com.sanedge.common.exception.ResourceNotFoundException;
-import com.sanedge.merchant.repository.MerchantQueryRepository;
+import com.sanedge.common.exception.InvalidRequestException;
 import com.sanedge.merchant_business.repository.MerchantBusinessCommandRepository;
 import com.sanedge.merchant_business.repository.MerchantBusinessQueryRepository;
 import com.sanedge.merchant_business.service.MerchantBusinessCommandService;
+import com.sanedge.common.observability.TracingMetrics;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -40,40 +33,26 @@ import jakarta.validation.Validator;
 public class MerchantBusinessCommandServiceImpl implements MerchantBusinessCommandService {
     private static final Logger logger = LoggerFactory.getLogger(MerchantBusinessCommandServiceImpl.class);
 
-    MerchantBusinessCommandRepository merchantBusinessCommandRepository;
-    MerchantBusinessQueryRepository merchantBusinessQueryRepository;
-    MerchantQueryRepository merchantQueryRepository;
-    Validator validator;
-    OpenTelemetry openTelemetry;
-    RedisService redisService;
-
-    private final Tracer tracer;
-    private final LongCounter requestsTotal;
-    private final DoubleHistogram requestDurationSeconds;
+    private final MerchantBusinessCommandRepository merchantBusinessCommandRepository;
+    private final MerchantBusinessQueryRepository merchantBusinessQueryRepository;
+    private final Validator validator;
+    private final RedisService redisService;
+    private final TracingMetrics tracingMetrics;
+    private final MerchantPort merchantPort;
 
     @Inject
     public MerchantBusinessCommandServiceImpl(MerchantBusinessCommandRepository merchantBusinessCommandRepository,
-                                             MerchantBusinessQueryRepository merchantBusinessQueryRepository,
-                                             MerchantQueryRepository merchantQueryRepository,
-                                             Validator validator,
-                                             OpenTelemetry openTelemetry,
-                                             RedisService redisService) {
+            MerchantBusinessQueryRepository merchantBusinessQueryRepository,
+            Validator validator,
+            RedisService redisService,
+            TracingMetrics tracingMetrics,
+            MerchantPort merchantPort) {
         this.merchantBusinessCommandRepository = merchantBusinessCommandRepository;
         this.merchantBusinessQueryRepository = merchantBusinessQueryRepository;
-        this.merchantQueryRepository = merchantQueryRepository;
         this.validator = validator;
-        this.openTelemetry = openTelemetry;
         this.redisService = redisService;
-        this.tracer = openTelemetry.getTracer("merchant-business-command-service", "1.0.0");
-        Meter meter = openTelemetry.getMeter("merchant-business-command-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
+        this.tracingMetrics = tracingMetrics;
+        this.merchantPort = merchantPort;
     }
 
     private <T> void validateRequest(T req) {
@@ -90,7 +69,8 @@ public class MerchantBusinessCommandServiceImpl implements MerchantBusinessComma
 
     private Uni<Void> invalidateCache(Long businessId) {
         if (businessId != null) {
-            return redisService.deleteReactive("merchantbusiness:id:" + businessId);
+            return redisService.deleteReactive("merchantbusiness:id:" + businessId)
+                    .replaceWith(Uni.createFrom().voidItem());
         }
         return Uni.createFrom().voidItem();
     }
@@ -98,378 +78,201 @@ public class MerchantBusinessCommandServiceImpl implements MerchantBusinessComma
     @Override
     @WithTransaction
     public Uni<ApiResponse<MerchantBusinessResponse>> createMerchantBusiness(CreateMerchantBusinessRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("createMerchantBusiness")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "create_business")
-                .setAttribute("merchant.id", req.getMerchantId() != null ? req.getMerchantId().toString() : "null")
-                .startSpan();
+        validateRequest(req);
+
+        Attributes attrs = Attributes.builder()
+                .put("merchant.id", req.getMerchantId())
+                .build();
 
         logger.info("Creating merchant business info for merchant ID: {}", req.getMerchantId());
 
-        try {
-            validateRequest(req);
-        } catch (Exception e) {
-            span.recordException(e);
-            span.setStatus(StatusCode.ERROR, e.getMessage());
-            return Uni.createFrom().failure(e);
-        }
+        return tracingMetrics.traceAndMeasure("createMerchantBusiness", "create_business", attrs,
+                () -> merchantPort.findById(req.getMerchantId())
+                        .chain(merchant -> {
+                            MerchantBusinessInformation business = MerchantBusinessInformation.fromCreateRequest(req);
+                            return merchantBusinessCommandRepository.persist(business)
+                                    .chain(saved -> {
+                                        MerchantBusinessResponse response = MerchantBusinessResponse.from(saved);
 
-        return merchantQueryRepository.findMerchantById(req.getMerchantId().longValue())
-                .chain(merchant -> {
-                    if (merchant == null) {
-                        logger.warn("Merchant not found with id {}", req.getMerchantId());
-                        throw new ResourceNotFoundException("Merchant not found with id " + req.getMerchantId());
-                    }
-
-                    MerchantBusinessInformation business = MerchantBusinessInformation.fromCreateRequest(req);
-                    return merchantBusinessCommandRepository.persist(business)
-                            .chain(saved -> {
-                                span.setAttribute("business.id", saved.id);
-                                MerchantBusinessResponse response = MerchantBusinessResponse.from(saved);
-
-                                return invalidateCache(saved.id)
-                                        .map(v -> {
-                                            logger.info("Successfully created merchant business info with id: {}", saved.id);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "create_business",
-                                                    AttributeKey.stringKey("status"), "success"));
-
-                                            return ApiResponse.success("Merchant business info created successfully", response);
-                                        });
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to create merchant business info for merchant ID: {}", req.getMerchantId(), e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_business",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_business"));
-                });
+                                        return invalidateCache(saved.id)
+                                                .map(v -> {
+                                                    logger.info(
+                                                            "Successfully created merchant business info with id: {}",
+                                                            saved.id);
+                                                    return ApiResponse.success(
+                                                            "Merchant business info created successfully", response);
+                                                });
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<MerchantBusinessResponse>> updateMerchantBusiness(UpdateMerchantBusinessRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("updateMerchantBusiness")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "update_business")
-                .setAttribute("business.id", req.getMerchantBusinessInfoId() != null ? req.getMerchantBusinessInfoId().toString() : "null")
-                .startSpan();
-
-        logger.info("Updating merchant business info ID: {}", req.getMerchantBusinessInfoId());
-
-        try {
-            validateRequest(req);
-        } catch (Exception e) {
-            span.recordException(e);
-            span.setStatus(StatusCode.ERROR, e.getMessage());
-            return Uni.createFrom().failure(e);
-        }
+        validateRequest(req);
 
         if (req.getMerchantBusinessInfoId() == null) {
-            span.setStatus(StatusCode.ERROR, "MerchantBusinessInfoId is required");
             throw new ResourceNotFoundException("MerchantBusinessInfoId is required");
         }
 
-        return merchantBusinessQueryRepository.findMerchantBusinessInformationById(req.getMerchantBusinessInfoId().longValue())
-                .chain(business -> {
-                    if (business == null) {
-                        logger.warn("Merchant business info not found: {}", req.getMerchantBusinessInfoId());
-                        throw new ResourceNotFoundException("Merchant business info not found with id " + req.getMerchantBusinessInfoId());
-                    }
+        Attributes attrs = Attributes.builder()
+                .put("business.id", req.getMerchantBusinessInfoId())
+                .build();
 
-                    business.setBusinessType(req.getBusinessType());
-                    business.setTaxId(req.getTaxId());
-                    business.setEstablishedYear(req.getEstablishedYear());
-                    business.setNumberOfEmployees(req.getNumberOfEmployees());
-                    business.setWebsiteUrl(req.getWebsiteUrl());
+        logger.info("Updating merchant business info ID: {}", req.getMerchantBusinessInfoId());
 
-                    return merchantBusinessCommandRepository.persist(business)
-                            .chain(saved -> {
-                                MerchantBusinessResponse response = MerchantBusinessResponse.from(saved);
+        return tracingMetrics.traceAndMeasure("updateMerchantBusiness", "update_business", attrs,
+                () -> merchantBusinessQueryRepository
+                        .findMerchantBusinessInformationById(req.getMerchantBusinessInfoId().longValue())
+                        .chain(business -> {
+                            if (business == null) {
+                                logger.warn("Merchant business info not found: {}", req.getMerchantBusinessInfoId());
+                                throw new ResourceNotFoundException(
+                                        "Merchant business info not found with id " + req.getMerchantBusinessInfoId());
+                            }
 
-                                return invalidateCache(saved.id)
-                                        .map(v -> {
-                                            logger.info("Successfully updated merchant business info with id: {}", saved.id);
-                                            span.setStatus(StatusCode.OK);
+                            business.setBusinessType(req.getBusinessType());
+                            business.setTaxId(req.getTaxId());
+                            business.setEstablishedYear(req.getEstablishedYear());
+                            business.setNumberOfEmployees(req.getNumberOfEmployees());
+                            business.setWebsiteUrl(req.getWebsiteUrl());
 
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "update_business",
-                                                    AttributeKey.stringKey("status"), "success"));
+                            return merchantBusinessCommandRepository.persist(business)
+                                    .chain(saved -> {
+                                        MerchantBusinessResponse response = MerchantBusinessResponse.from(saved);
 
-                                            return ApiResponse.success("Merchant business info updated successfully", response);
-                                        });
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to update merchant business info ID: {}", req.getMerchantBusinessInfoId(), e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_business",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_business"));
-                });
+                                        return invalidateCache(saved.id)
+                                                .map(v -> {
+                                                    logger.info(
+                                                            "Successfully updated merchant business info with id: {}",
+                                                            saved.id);
+                                                    return ApiResponse.success(
+                                                            "Merchant business info updated successfully", response);
+                                                });
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<MerchantBusinessResponseDeleteAt>> trashedMerchantBusiness(Long merchantBusinessInfoId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("trashedMerchantBusiness")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "trash_business")
-                .setAttribute("business.id", merchantBusinessInfoId.toString())
-                .startSpan();
+        Attributes attrs = Attributes.builder()
+                .put("business.id", merchantBusinessInfoId)
+                .build();
 
         logger.info("Soft deleting merchant business info ID: {}", merchantBusinessInfoId);
 
-        return merchantBusinessCommandRepository.trashed(merchantBusinessInfoId)
-                .chain(business -> {
-                    if (business == null) {
-                        logger.warn("Failed to trash merchant business info ID: {}", merchantBusinessInfoId);
-                        throw new ResourceNotFoundException("Merchant business info not found or already trashed");
-                    }
+        return tracingMetrics.traceAndMeasure("trashedMerchantBusiness", "trash_business", attrs,
+                () -> merchantBusinessCommandRepository.trashed(merchantBusinessInfoId)
+                        .chain(business -> {
+                            if (business == null) {
+                                logger.warn("Failed to trash merchant business info ID: {}", merchantBusinessInfoId);
+                                throw new ResourceNotFoundException(
+                                        "Merchant business info not found or already trashed");
+                            }
 
-                    MerchantBusinessResponseDeleteAt response = MerchantBusinessResponseDeleteAt.from(business);
+                            MerchantBusinessResponseDeleteAt response = MerchantBusinessResponseDeleteAt.from(business);
 
-                    return invalidateCache(merchantBusinessInfoId)
-                            .map(v -> {
-                                logger.info("Successfully trashed merchant business info with id: {}", merchantBusinessInfoId);
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "trash_business",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("Merchant business info trashed successfully", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to trash merchant business info ID: {}", merchantBusinessInfoId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_business",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_business"));
-                });
+                            return invalidateCache(merchantBusinessInfoId)
+                                    .map(v -> {
+                                        logger.info("Successfully trashed merchant business info with id: {}",
+                                                merchantBusinessInfoId);
+                                        return ApiResponse.success("Merchant business info trashed successfully",
+                                                response);
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<MerchantBusinessResponseDeleteAt>> restoreMerchantBusiness(Long merchantBusinessInfoId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreMerchantBusiness")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "restore_business")
-                .setAttribute("business.id", merchantBusinessInfoId.toString())
-                .startSpan();
+        Attributes attrs = Attributes.builder()
+                .put("business.id", merchantBusinessInfoId)
+                .build();
 
         logger.info("Restoring merchant business info ID: {}", merchantBusinessInfoId);
 
-        return merchantBusinessCommandRepository.restore(merchantBusinessInfoId)
-                .chain(business -> {
-                    if (business == null) {
-                        logger.warn("Failed to restore merchant business info ID: {}", merchantBusinessInfoId);
-                        throw new ResourceNotFoundException("Merchant business info not found or not trashed");
-                    }
+        return tracingMetrics.traceAndMeasure("restoreMerchantBusiness", "restore_business", attrs,
+                () -> merchantBusinessCommandRepository.restore(merchantBusinessInfoId)
+                        .chain(business -> {
+                            if (business == null) {
+                                logger.warn("Failed to restore merchant business info ID: {}", merchantBusinessInfoId);
+                                throw new ResourceNotFoundException("Merchant business info not found or not trashed");
+                            }
 
-                    MerchantBusinessResponseDeleteAt response = MerchantBusinessResponseDeleteAt.from(business);
+                            MerchantBusinessResponseDeleteAt response = MerchantBusinessResponseDeleteAt.from(business);
 
-                    return invalidateCache(merchantBusinessInfoId)
-                            .map(v -> {
-                                logger.info("Successfully restored merchant business info with id: {}", merchantBusinessInfoId);
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "restore_business",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("Merchant business info restored successfully", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to restore merchant business info ID: {}", merchantBusinessInfoId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_business",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_business"));
-                });
+                            return invalidateCache(merchantBusinessInfoId)
+                                    .map(v -> {
+                                        logger.info("Successfully restored merchant business info with id: {}",
+                                                merchantBusinessInfoId);
+                                        return ApiResponse.success("Merchant business info restored successfully",
+                                                response);
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
-    public Uni<ApiResponse<Boolean>> deleteMerchantBusinessPermanent(Long merchantBusinessInfoId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteMerchantBusinessPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "delete_business_permanent")
-                .setAttribute("business.id", merchantBusinessInfoId.toString())
-                .startSpan();
+    public Uni<ApiResponse<Void>> deleteMerchantBusinessPermanent(Long merchantBusinessInfoId) {
+        Attributes attrs = Attributes.builder()
+                .put("business.id", merchantBusinessInfoId)
+                .build();
 
         logger.warn("Permanently deleting merchant business info ID: {}", merchantBusinessInfoId);
 
-        return merchantBusinessQueryRepository.findById(merchantBusinessInfoId)
-                .chain(business -> {
-                    if (business == null) {
-                        logger.warn("Permanent delete failed - business info not found with id: {}", merchantBusinessInfoId);
-                        throw new ResourceNotFoundException("Merchant business info not found");
-                    }
+        return tracingMetrics.traceAndMeasure("deleteMerchantBusinessPermanent", "delete_business_permanent", attrs, () -> {
+            return merchantBusinessCommandRepository.deletePermanent(merchantBusinessInfoId)
+                    .chain(deletedBusiness -> {
+                        if (deletedBusiness == null) {
+                            logger.warn("Permanent delete failed - business info not found or must be trashed before permanent deletion with id: {}",
+                                    merchantBusinessInfoId);
+                            throw new InvalidRequestException(
+                                    "Merchant business info not found or must be trashed before permanent deletion");
+                        }
 
-                    return merchantBusinessCommandRepository.deletePermanent(merchantBusinessInfoId)
-                            .chain(deleted -> {
-                                return invalidateCache(merchantBusinessInfoId)
-                                        .map(v -> {
-                                            logger.info("Successfully permanently deleted merchant business info with id: {}", merchantBusinessInfoId);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "delete_business_permanent",
-                                                    AttributeKey.stringKey("status"), "success"));
-
-                                            return ApiResponse.success("Merchant business info permanently deleted", deleted);
-                                        });
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to permanently delete merchant business info ID: {}", merchantBusinessInfoId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_business_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_business_permanent"));
-                });
+                        return invalidateCache(merchantBusinessInfoId)
+                                .map(v -> {
+                                    logger.info("Successfully permanently deleted merchant business info with id: {}",
+                                            merchantBusinessInfoId);
+                                    return ApiResponse.success("Merchant business info permanently deleted");
+                                });
+                    });
+        });
     }
 
     @Override
     @WithTransaction
-    public Uni<ApiResponse<Boolean>> restoreAllMerchantBusiness() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreAllMerchantBusiness")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "restore_all_business_info")
-                .startSpan();
-
+    public Uni<ApiResponse<Void>> restoreAllMerchantBusiness() {
         logger.info("Restoring all trashed merchant business info");
 
-        return merchantBusinessCommandRepository.restoreAllDeleted()
-                .map(restored -> {
-                    logger.info("Successfully restored all trashed merchant business info");
-                    span.setStatus(StatusCode.OK);
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_business_info",
-                            AttributeKey.stringKey("status"), "success"));
-
-                    return ApiResponse.success("All trashed merchant business info restored", restored);
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to restore all trashed merchant business info", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_business_info",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_business_info"));
-                });
+        return tracingMetrics.traceAndMeasure("restoreAllMerchantBusiness", "restore_all_business_info", () -> {
+            return merchantBusinessCommandRepository.restoreAllDeleted()
+                    .map(success -> {
+                        if (!success) {
+                            throw new ResourceNotFoundException("No trashed merchant business info found");
+                        }
+                        logger.info("Successfully restored all trashed merchant business info");
+                        return ApiResponse.success("All trashed merchant business info restored");
+                    });
+        });
     }
 
     @Override
     @WithTransaction
-    public Uni<ApiResponse<Boolean>> deleteAllMerchantBusinessPermanent() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteAllMerchantBusinessPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "merchant-business-service")
-                .setAttribute("operation", "delete_all_business_info_permanent")
-                .startSpan();
-
+    public Uni<ApiResponse<Void>> deleteAllMerchantBusinessPermanent() {
         logger.warn("Permanently deleting all trashed merchant business info");
 
-        return merchantBusinessCommandRepository.deleteAllDeleted()
-                .map(deleted -> {
-                    logger.info("Successfully permanently deleted all trashed merchant business info");
-                    span.setStatus(StatusCode.OK);
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_business_info_permanent",
-                            AttributeKey.stringKey("status"), "success"));
-
-                    return ApiResponse.success("All trashed merchant business info permanently deleted", deleted);
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("Failed to permanently delete all trashed merchant business info", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_business_info_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_business_info_permanent"));
-                });
+        return tracingMetrics.traceAndMeasure("deleteAllMerchantBusinessPermanent",
+                "delete_all_business_info_permanent", () -> {
+            return merchantBusinessCommandRepository.deleteAllDeleted()
+                    .map(success -> {
+                        if (!success) {
+                            throw new ResourceNotFoundException("No trashed merchant business info found");
+                        }
+                        logger.info("Successfully permanently deleted all trashed merchant business info");
+                        return ApiResponse.success("All trashed merchant business info permanently deleted");
+                    });
+        });
     }
 }

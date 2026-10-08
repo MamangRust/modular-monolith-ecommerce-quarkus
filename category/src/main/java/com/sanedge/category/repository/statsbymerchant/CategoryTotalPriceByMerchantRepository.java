@@ -6,6 +6,7 @@ import java.util.List;
 import com.sanedge.category.entity.CategoriesMonthlyTotalPrice;
 import com.sanedge.category.entity.CategoriesYearlyTotalPrice;
 import com.sanedge.category.entity.Category;
+import com.sanedge.category.domain.requests.FindMonthlyCategoryTotalPriceByMerchantRequest;
 
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
@@ -15,10 +16,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class CategoryTotalPriceByMerchantRepository implements PanacheRepository<Category> {
 
-    public Uni<List<CategoriesMonthlyTotalPrice>> findMonthlyTotalPriceByMerchant(
-            Long merchantId,
-            Integer year,
-            Integer month) {
+    public Uni<List<CategoriesMonthlyTotalPrice>> findMonthlyTotalPriceByMerchant(FindMonthlyCategoryTotalPriceByMerchantRequest req) {
+        Long merchantId = req.getMerchantId();
+        Integer year = req.getYear();
+        Integer month = req.getMonth();
+
         java.time.LocalDate currentMonth = java.time.LocalDate.of(year, month, 1);
         java.time.LocalDate nextMonth = currentMonth.plusMonths(1);
 
@@ -31,9 +33,9 @@ public class CategoryTotalPriceByMerchantRepository implements PanacheRepository
             WITH
                 monthly_totals AS (
                     SELECT
-                        CAST(EXTRACT(YEAR FROM o.created_at) AS VARCHAR) AS "year",
-                        CAST(EXTRACT(MONTH FROM o.created_at) AS INTEGER) AS month_num,
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(EXTRACT(MONTH FROM o.created_at) AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM') AS month_name,
+                        EXTRACT(YEAR FROM o.created_at)::INTEGER AS "year",
+                        EXTRACT(MONTH FROM o.created_at)::INTEGER AS month_num,
+                        TO_CHAR(MAKE_DATE(2000, EXTRACT(MONTH FROM o.created_at)::INTEGER, 1), 'FMMonth') AS month_name,
                         CAST(COALESCE(SUM(o.total_price), 0) AS BIGINT) AS totalRevenue
                     FROM orders o
                     JOIN order_items oi ON o.id = oi.order_id
@@ -49,29 +51,29 @@ public class CategoryTotalPriceByMerchantRepository implements PanacheRepository
                             (EXTRACT(YEAR FROM o.created_at) = :endYear AND EXTRACT(MONTH FROM o.created_at) = :endMonth)
                         )
                     GROUP BY
-                        CAST(EXTRACT(YEAR FROM o.created_at) AS VARCHAR),
-                        CAST(EXTRACT(MONTH FROM o.created_at) AS INTEGER),
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(EXTRACT(MONTH FROM o.created_at) AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM')
+                        EXTRACT(YEAR FROM o.created_at),
+                        EXTRACT(MONTH FROM o.created_at),
+                        TO_CHAR(MAKE_DATE(2000, EXTRACT(MONTH FROM o.created_at)::INTEGER, 1), 'FMMonth')
                 ),
                 all_months AS (
                     SELECT
-                        CAST(:startYear AS VARCHAR) AS "year",
+                        CAST(:startYear AS INTEGER) AS "year",
                         CAST(:startMonth AS INTEGER) AS month_num,
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:startMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM') AS month_name
+                        TO_CHAR(MAKE_DATE(2000, :startMonth, 1), 'FMMonth') AS month_name
                     UNION
                     SELECT
-                        CAST(:endYear AS VARCHAR) AS "year",
+                        CAST(:endYear AS INTEGER) AS "year",
                         CAST(:endMonth AS INTEGER) AS month_num,
-                        FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:endMonth AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM') AS month_name
+                        TO_CHAR(MAKE_DATE(2000, :endMonth, 1), 'FMMonth') AS month_name
                 )
             SELECT
-                am."year" AS "year",
+                CAST(am."year" AS VARCHAR) AS "year",
                 am.month_name AS "month",
                 CAST(COALESCE(mt.totalRevenue, 0) AS BIGINT) AS totalRevenue
             FROM all_months am
             LEFT JOIN monthly_totals mt
-                   ON am."year" = mt."year" AND am.month_num = mt.month_num
-            ORDER BY CAST(am."year" AS INTEGER) DESC, am.month_num DESC
+                ON am."year" = mt."year" AND am.month_num = mt.month_num
+            ORDER BY am."year" DESC, am.month_num DESC
             """;
 
         return Panache.getSession().chain(session -> session.createNativeQuery(sql)
@@ -101,7 +103,7 @@ public class CategoryTotalPriceByMerchantRepository implements PanacheRepository
             WITH
                 yearly_data AS (
                     SELECT
-                        CAST(EXTRACT(YEAR FROM o.created_at) AS VARCHAR) AS "year",
+                        EXTRACT(YEAR FROM o.created_at)::INTEGER AS "year",
                         CAST(COALESCE(SUM(o.total_price), 0) AS BIGINT) AS totalRevenue
                     FROM orders o
                     JOIN order_items oi ON o.id = oi.order_id
@@ -120,15 +122,15 @@ public class CategoryTotalPriceByMerchantRepository implements PanacheRepository
                     GROUP BY EXTRACT(YEAR FROM o.created_at)
                 ),
                 all_years AS (
-                    SELECT :year AS "year"
+                    SELECT CAST(:year AS INTEGER) AS "year"
                     UNION
-                    SELECT :year - 1 AS "year"
+                    SELECT CAST(:year - 1 AS INTEGER) AS "year"
                 )
             SELECT
                 CAST(a."year" AS VARCHAR) AS "year",
                 CAST(COALESCE(yd.totalRevenue, 0) AS BIGINT) AS totalRevenue
             FROM all_years a
-            LEFT JOIN yearly_data yd ON CAST(a."year" AS VARCHAR) = yd."year"
+            LEFT JOIN yearly_data yd ON a."year" = yd."year"
             ORDER BY a."year" DESC
             """;
 

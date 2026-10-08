@@ -17,8 +17,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sanedge.common.config.RedisService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.sanedge.common.cache.ReactiveCache;
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.observability.TracingMetrics;
 import com.sanedge.order.domain.requests.MonthTotalRevenue;
@@ -38,25 +38,37 @@ class OrderTotalRevenueServiceImplTest {
     private OrderTotalRevenueRepository orderTotalRevenueRepository;
 
     @Mock
-    private RedisService redisService;
+    private ReactiveCache reactiveCache;
 
     @Mock
     private TracingMetrics tracingMetrics;
 
     private OrderTotalRevenueServiceImpl service;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        service = new OrderTotalRevenueServiceImpl(orderTotalRevenueRepository, redisService, objectMapper,
-                tracingMetrics);
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        service = new OrderTotalRevenueServiceImpl(orderTotalRevenueRepository, reactiveCache, tracingMetrics);
+        // ReactiveCache resolves the loader (DB) on cache miss.
+        lenient().doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(reactiveCache)
+                .getOrCache(
+                        anyString(),
+                        anyLong(),
+                        any(TypeReference.class),
+                        any());
+        lenient().doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private OrderMonthlyTotalRevenue createMonthly() {
@@ -67,15 +79,14 @@ class OrderTotalRevenueServiceImplTest {
         return new OrderYearlyTotalRevenue("2024", 12000L);
     }
 
-    // ========== findMonthlyStats Tests ==========
-
     @Test
     void findMonthlyStats_nullYear_returnsError() {
         MonthTotalRevenue req = new MonthTotalRevenue();
         req.setYear(null);
         req.setMonth(1);
 
-        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await().indefinitely();
+        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await()
+                .indefinitely();
 
         assertThat(result.status()).isEqualTo("error");
     }
@@ -86,7 +97,8 @@ class OrderTotalRevenueServiceImplTest {
         req.setYear(2024);
         req.setMonth(13);
 
-        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await().indefinitely();
+        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await()
+                .indefinitely();
 
         assertThat(result.status()).isEqualTo("error");
     }
@@ -97,36 +109,31 @@ class OrderTotalRevenueServiceImplTest {
         req.setYear(2024);
         req.setMonth(1);
 
-        when(redisService.getReactive(anyString())).thenReturn(Uni.createFrom().nullItem());
         when(orderTotalRevenueRepository.findMonthlyTotalRevenue(anyInt(), anyInt()))
                 .thenReturn(Uni.createFrom().item(List.of(createMonthly())));
-        when(redisService.setWithExpirationReactive(anyString(), anyString(), anyLong()))
-                .thenReturn(Uni.createFrom().voidItem());
 
-        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await().indefinitely();
+        ApiResponse<List<OrderMonthlyTotalRevenueResponse>> result = service.findMonthlyStats(req).await()
+                .indefinitely();
 
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
 
-    // ========== findYearlyStats Tests ==========
-
     @Test
     void findYearlyStats_nullYear_returnsError() {
-        ApiResponse<List<OrderYearlyTotalRevenueResponse>> result = service.findYearlyStats(null).await().indefinitely();
+        ApiResponse<List<OrderYearlyTotalRevenueResponse>> result = service.findYearlyStats(null).await()
+                .indefinitely();
 
         assertThat(result.status()).isEqualTo("error");
     }
 
     @Test
     void findYearlyStats_cacheMiss_returnsFromDb() {
-        when(redisService.getReactive(anyString())).thenReturn(Uni.createFrom().nullItem());
         when(orderTotalRevenueRepository.findYearlyTotalRevenue(anyInt()))
                 .thenReturn(Uni.createFrom().item(List.of(createYearly())));
-        when(redisService.setWithExpirationReactive(anyString(), anyString(), anyLong()))
-                .thenReturn(Uni.createFrom().voidItem());
 
-        ApiResponse<List<OrderYearlyTotalRevenueResponse>> result = service.findYearlyStats(2024).await().indefinitely();
+        ApiResponse<List<OrderYearlyTotalRevenueResponse>> result = service.findYearlyStats(2024).await()
+                .indefinitely();
 
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);

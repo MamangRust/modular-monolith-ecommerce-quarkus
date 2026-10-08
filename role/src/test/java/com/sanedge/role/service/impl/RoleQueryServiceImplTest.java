@@ -63,19 +63,17 @@ class RoleQueryServiceImplTest {
                 tracingMetrics,
                 objectMapper);
 
-        // Use lenient() so cache-hit tests that don't invoke tracing don't fail with UnnecessaryStubbing
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    Object result = supplier.get();
-                    if (result instanceof Uni) {
-                        return (Uni<?>) result;
-                    }
-                    return Uni.createFrom().item(result);
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
-    // Helper Method untuk membuat role mock
     private Role createMockRole(Long id, String roleName) {
         Role role = new Role();
         role.id = id != null ? id.longValue() : null;
@@ -86,7 +84,6 @@ class RoleQueryServiceImplTest {
         return role;
     }
 
-    // Helper untuk mensimulasikan String JSON yang disimpan di Redis
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
@@ -94,8 +91,6 @@ class RoleQueryServiceImplTest {
             throw new RuntimeException("Failed to serialize in test helper", e);
         }
     }
-
-    // ========== 1. TESTS FIND BY ID ==========
 
     @Test
     void findById_cacheHit_returnsCachedRoleWithoutHittingDb() {
@@ -113,7 +108,6 @@ class RoleQueryServiceImplTest {
         assertThat(response.data()).isNotNull();
         assertThat(response.data().getName()).isEqualTo("AdminRole");
 
-        // Verifikasi bahwa DB tidak pernah dipanggil karena data ada di cache
         verify(roleRepository, never()).findById(anyLong());
     }
 
@@ -132,9 +126,8 @@ class RoleQueryServiceImplTest {
         assertThat(response.message()).isEqualTo("Role found");
         assertThat(response.data().getName()).isEqualTo("EditorRole");
 
-        // Verifikasi DB dipanggil
         verify(roleRepository).findById(anyLong());
-        // Verifikasi hasil DB disimpan ke Redis
+
         verify(redisService).setReactive(anyString(), anyString());
     }
 
@@ -147,11 +140,8 @@ class RoleQueryServiceImplTest {
 
         assertThrows(NotFoundException.class, () -> resultUni.await().indefinitely());
 
-        // Verifikasi tidak mencoba menyimpan data NULL ke cache
         verify(redisService, never()).setReactive(anyString(), anyString());
     }
-
-    // ========== 2. TESTS FIND BY NAME ==========
 
     @Test
     void findByName_cacheHit_returnsCachedRoleWithoutHittingDb() {
@@ -168,7 +158,6 @@ class RoleQueryServiceImplTest {
         assertThat(response.message()).isEqualTo("Role found");
         assertThat(response.data().getName()).isEqualTo("Admin");
 
-        // Verifikasi bahwa DB tidak pernah dipanggil
         verify(roleRepository, never()).findByRoleName(anyString());
     }
 
@@ -203,8 +192,6 @@ class RoleQueryServiceImplTest {
         verify(redisService, never()).setReactive(anyString(), anyString());
     }
 
-    // ========== 3. TESTS FIND BY USER ID ==========
-
     @Test
     void findByUserId_cacheHit_returnsCachedRolesWithoutHittingDb() {
         Long userId = 1L;
@@ -212,7 +199,6 @@ class RoleQueryServiceImplTest {
         RoleResponse res1 = RoleResponse.from(createMockRole(1L, "Admin"));
         RoleResponse res2 = RoleResponse.from(createMockRole(2L, "Editor"));
 
-        // Service stores List<RoleResponse> directly in cache (not wrapped in ApiResponse)
         List<RoleResponse> cachedList = List.of(res1, res2);
         String cachedJson = toJson(cachedList);
 
@@ -275,11 +261,9 @@ class RoleQueryServiceImplTest {
         assertThat(response.data()).isEmpty();
 
         verify(roleRepository).findUserRoles(userId);
-        // Even an empty list should still be cached (so subsequent reads don't hit DB)
+
         verify(redisService).setReactive(anyString(), anyString());
     }
-
-    // ========== 4. TESTS FIND ALL PAGINATED ==========
 
     @Test
     void findAllPaginated_cacheHit_returnsCachedList() {
@@ -308,7 +292,6 @@ class RoleQueryServiceImplTest {
         assertThat(response.data()).hasSize(2);
         assertThat(response.data().get(0).getName()).isEqualTo("Role1");
 
-        // Verifikasi DB tidak dipanggil
         verify(roleRepository, never()).findRoles(any(FindAllRoles.class));
     }
 
@@ -344,8 +327,6 @@ class RoleQueryServiceImplTest {
         verify(roleRepository).findRoles(req);
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
-
-    // ========== 5. TESTS FIND ACTIVE PAGINATED ==========
 
     @Test
     void findActivePaginated_cacheHit_returnsCachedList() {
@@ -402,8 +383,6 @@ class RoleQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
 
-    // ========== 6. TESTS FIND TRASHED PAGINATED ==========
-
     @Test
     void findTrashedPaginated_cacheHit_returnsCachedList() {
         FindAllRoles req = new FindAllRoles();
@@ -459,13 +438,11 @@ class RoleQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
 
-    // ========== 7. EDGE CASES: PAGINATION MATH ==========
-
     @Test
     void findAllPaginated_calculatesTotalPagesCorrectlyWhenNotPerfectlyDivisible() {
         FindAllRoles req = new FindAllRoles();
         req.setPage(1);
-        req.setPageSize(2); // Size 2
+        req.setPageSize(2);
         req.setSearch(null);
         String cacheKey = "roles:all:1:2:null";
 
@@ -483,7 +460,6 @@ class RoleQueryServiceImplTest {
         Uni<ApiResponsePagination<List<RoleResponse>>> responseUni = roleQueryService.findAllPaginated(req);
         ApiResponsePagination<List<RoleResponse>> response = responseUni.await().indefinitely();
 
-        // 5 records / 2 size = 2.5 -> Math.ceil -> 3 halaman
         assertThat(response.pagination()).isNotNull();
         assertThat(response.pagination().totalPages()).isEqualTo(3);
         assertThat(response.pagination().totalRecords()).isEqualTo(5);

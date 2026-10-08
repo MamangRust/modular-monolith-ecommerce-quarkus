@@ -1,6 +1,7 @@
 package com.sanedge.merchant.entity;
 
-import java.util.UUID;
+import com.sanedge.common.entity.BaseModel;
+
 import com.sanedge.common.enums.Status;
 
 import jakarta.persistence.Column;
@@ -23,25 +24,30 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "merchants")
 public class Merchant extends BaseModel {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "merchant_id")
-    public Long merchantId;
-
-    @Column(name = "merchant_no", nullable = false, unique = true)
-    public UUID merchantNo;
-
-    @Column(nullable = false)
-    public String name;
-
-    @Column(name = "api_key", unique = true, nullable = false)
-    public String apiKey;
+    private Long merchantId;
 
     @Column(name = "user_id", nullable = false)
-    public Integer userId;
+    private Integer userId;
+
+    @Column(nullable = false, length = 255)
+    private String name;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(columnDefinition = "TEXT")
+    private String address;
+
+    @Column(name = "contact_email", length = 100)
+    private String contactEmail;
+
+    @Column(name = "contact_phone", length = 20)
+    private String contactPhone;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    public Status status = Status.PENDING;
+    private Status status = Status.PENDING;
 }

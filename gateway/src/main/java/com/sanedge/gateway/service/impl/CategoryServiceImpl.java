@@ -219,16 +219,26 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
-    public Uni<CategoryDto.ApiResponseCategory> create(pb.category.CategoryCommand.CreateCategoryRequest body) {
-        return telemetryHelper.traceAndMetric("category.create", () -> categoryCommandService.create(body)
+    public Uni<CategoryDto.ApiResponseCategory> create(CategoryDto.CreateCategoryRequest body) {
+        pb.category.CategoryCommand.CreateCategoryRequest req = pb.category.CategoryCommand.CreateCategoryRequest.newBuilder()
+                .setName(body.name() == null ? "" : body.name())
+                .setDescription(body.description() == null ? "" : body.description())
+                .setSlugCategory(body.slugCategory() == null ? "" : body.slugCategory())
+                .setImageCategory(body.imageCategory() == null ? "" : body.imageCategory())
+                .build();
+        return telemetryHelper.traceAndMetric("category.create", () -> categoryCommandService.create(req)
                 .map(CategoryDto.ApiResponseCategory::from)
                 .onFailure().invoke(throwable -> LOG.error("Failed to create category: " + throwable.getMessage(), throwable)));
     }
 
     @Override
-    public Uni<CategoryDto.ApiResponseCategory> update(int id, pb.category.CategoryCommand.UpdateCategoryRequest body) {
-        pb.category.CategoryCommand.UpdateCategoryRequest req = pb.category.CategoryCommand.UpdateCategoryRequest.newBuilder(body)
+    public Uni<CategoryDto.ApiResponseCategory> update(int id, CategoryDto.UpdateCategoryRequest body) {
+        pb.category.CategoryCommand.UpdateCategoryRequest req = pb.category.CategoryCommand.UpdateCategoryRequest.newBuilder()
                 .setCategoryId(id)
+                .setName(body.name() == null ? "" : body.name())
+                .setDescription(body.description() == null ? "" : body.description())
+                .setSlugCategory(body.slugCategory() == null ? "" : body.slugCategory())
+                .setImageCategory(body.imageCategory() == null ? "" : body.imageCategory())
                 .build();
         return telemetryHelper.traceAndMetric("category.update", () -> categoryCommandService.update(req)
                 .map(CategoryDto.ApiResponseCategory::from)

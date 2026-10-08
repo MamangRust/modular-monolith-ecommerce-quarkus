@@ -75,10 +75,6 @@ class MerchantCommandGrpcHandlerTest {
                                 .build();
         }
 
-        // ──────────────────────────────────────────────
-        // Create Merchant Tests
-        // ──────────────────────────────────────────────
-
         @Test
         void create_shouldReturnSuccess() {
                 ApiResponse<MerchantResponse> serviceResponse = ApiResponse.success("Merchant created successfully",
@@ -113,10 +109,6 @@ class MerchantCommandGrpcHandlerTest {
                 org.junit.jupiter.api.Assertions.assertThrows(io.grpc.StatusRuntimeException.class,
                                 () -> handler.create(request).await().indefinitely());
         }
-
-        // ──────────────────────────────────────────────
-        // Update Merchant Tests
-        // ──────────────────────────────────────────────
 
         @Test
         void update_shouldReturnSuccess() {
@@ -156,10 +148,6 @@ class MerchantCommandGrpcHandlerTest {
                                 () -> handler.update(request).await().indefinitely());
         }
 
-        // ──────────────────────────────────────────────
-        // Update Status Tests
-        // ──────────────────────────────────────────────
-
         @Test
         void updateStatus_shouldReturnSuccess() {
                 ApiResponse<MerchantResponse> findByIdResponse = ApiResponse.success("found", merchantResponse);
@@ -197,10 +185,6 @@ class MerchantCommandGrpcHandlerTest {
                                 () -> handler.updateStatus(request).await().indefinitely());
         }
 
-        // ──────────────────────────────────────────────
-        // Trash Merchant Tests
-        // ──────────────────────────────────────────────
-
         @Test
         void trashMerchant_shouldReturnSuccess() {
                 ApiResponse<MerchantResponseDeleteAt> serviceResponse = ApiResponse
@@ -233,10 +217,6 @@ class MerchantCommandGrpcHandlerTest {
                                 () -> handler.trashedMerchant(request).await().indefinitely());
         }
 
-        // ──────────────────────────────────────────────
-        // Restore Merchant Tests
-        // ──────────────────────────────────────────────
-
         @Test
         void restoreMerchant_shouldReturnSuccess() {
                 ApiResponse<MerchantResponseDeleteAt> serviceResponse = ApiResponse
@@ -267,10 +247,6 @@ class MerchantCommandGrpcHandlerTest {
                 org.junit.jupiter.api.Assertions.assertThrows(io.grpc.StatusRuntimeException.class,
                                 () -> handler.restoreMerchant(request).await().indefinitely());
         }
-
-        // ──────────────────────────────────────────────
-        // Delete Merchant Permanent Tests
-        // ──────────────────────────────────────────────
 
         @Test
         void deleteMerchantPermanent_shouldReturnSuccess() {
@@ -303,10 +279,6 @@ class MerchantCommandGrpcHandlerTest {
                                 () -> handler.deleteMerchantPermanent(request).await().indefinitely());
         }
 
-        // ──────────────────────────────────────────────
-        // Restore All Tests
-        // ──────────────────────────────────────────────
-
         @Test
         void restoreAllMerchant_shouldReturnSuccess() {
                 ApiResponse<Void> serviceResponse = ApiResponse.success("Restored all trashed merchants");
@@ -332,10 +304,6 @@ class MerchantCommandGrpcHandlerTest {
                                 () -> handler.restoreAllMerchant(com.google.protobuf.Empty.getDefaultInstance()).await()
                                                 .indefinitely());
         }
-
-        // ──────────────────────────────────────────────
-        // Delete All Permanent Tests
-        // ──────────────────────────────────────────────
 
         @Test
         void deleteAllMerchantPermanent_shouldReturnSuccess() {

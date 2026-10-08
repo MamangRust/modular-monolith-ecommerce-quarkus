@@ -35,13 +35,13 @@ public class MerchantCommandRepository implements PanacheRepository<Merchant> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long merchantId) {
+    public Uni<Merchant> deletePermanent(Long merchantId) {
         return find("merchantId = ?1", merchantId).firstResult()
                 .chain(merchant -> {
                     if (merchant != null) {
-                        return delete(merchant).map(v -> true);
+                        return delete(merchant).map(v -> merchant);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 
@@ -63,7 +63,7 @@ public class MerchantCommandRepository implements PanacheRepository<Merchant> {
                 .chain(merchant -> {
                     if (merchant != null) {
                         try {
-                            merchant.status = com.sanedge.common.enums.Status.valueOf(status.toUpperCase());
+                            merchant.setStatus(com.sanedge.common.enums.Status.valueOf(status.toUpperCase()));
                             return persist(merchant).map(v -> true);
                         } catch (IllegalArgumentException e) {
                             return Uni.createFrom().item(false);

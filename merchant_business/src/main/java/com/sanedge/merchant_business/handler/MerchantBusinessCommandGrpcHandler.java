@@ -7,6 +7,7 @@ import com.sanedge.merchant_business.domain.response.MerchantBusinessResponseDel
 import com.sanedge.merchant_business.service.MerchantBusinessCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -15,6 +16,7 @@ import pb.merchant_business.MutinyMerchantBusinessCommandServiceGrpc;
 import pb.merchant_business.MerchantBusinessCommon.ApiResponseMerchantBusiness;
 import pb.merchant_business.MerchantBusinessCommon.ApiResponseMerchantBusinessDeleteAt;
 import pb.merchant_business.MerchantBusinessCommon.FindByIdMerchantBusinessRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,7 +29,9 @@ public class MerchantBusinessCommandGrpcHandler
     @Override
     public Uni<ApiResponseMerchantBusiness> create(
             pb.merchant_business.MerchantBusinessCommand.CreateMerchantBusinessRequest request) {
-        CreateMerchantBusinessRequest domainReq = new CreateMerchantBusinessRequest();
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }        CreateMerchantBusinessRequest domainReq = new CreateMerchantBusinessRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setBusinessType(request.getBusinessType());
         domainReq.setTaxId(request.getTaxId());
@@ -45,13 +49,15 @@ public class MerchantBusinessCommandGrpcHandler
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseMerchantBusiness> update(
             pb.merchant_business.MerchantBusinessCommand.UpdateMerchantBusinessRequest request) {
-        UpdateMerchantBusinessRequest domainReq = new UpdateMerchantBusinessRequest();
+        if (request.getMerchantBusinessInfoId() <= 0) {
+            return IdValidator.invalid("MerchantBusinessInfo id");
+        }        UpdateMerchantBusinessRequest domainReq = new UpdateMerchantBusinessRequest();
         domainReq.setMerchantBusinessInfoId(request.getMerchantBusinessInfoId());
         domainReq.setBusinessType(request.getBusinessType());
         domainReq.setTaxId(request.getTaxId());
@@ -73,12 +79,15 @@ public class MerchantBusinessCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantBusinessDeleteAt> trashedMerchantBusiness(FindByIdMerchantBusinessRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantBusinessCommandService.trashedMerchantBusiness((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantBusinessDeleteAt.Builder builder = ApiResponseMerchantBusinessDeleteAt
@@ -94,12 +103,15 @@ public class MerchantBusinessCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantBusinessDeleteAt> restoreMerchantBusiness(FindByIdMerchantBusinessRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantBusinessCommandService.restoreMerchantBusiness((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantBusinessDeleteAt.Builder builder = ApiResponseMerchantBusinessDeleteAt
@@ -115,13 +127,16 @@ public class MerchantBusinessCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<pb.merchant.MerchantCommon.ApiResponseMerchantDelete> deleteMerchantBusinessPermanent(
             FindByIdMerchantBusinessRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantBusinessCommandService.deleteMerchantBusinessPermanent((long) request.getId())
                 .map(apiResp -> pb.merchant.MerchantCommon.ApiResponseMerchantDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -131,7 +146,7 @@ public class MerchantBusinessCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -143,7 +158,7 @@ public class MerchantBusinessCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -154,7 +169,7 @@ public class MerchantBusinessCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_business.MerchantBusinessCommon.MerchantBusinessResponse toProto(MerchantBusinessResponse r) {

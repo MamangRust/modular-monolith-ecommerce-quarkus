@@ -9,7 +9,9 @@ import com.sanedge.order.domain.response.OrderYearlyResponse;
 import com.sanedge.order.service.OrderSoldOutByMerchantService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -18,6 +20,7 @@ import pb.order.stats.MutinyOrderRevenueByMerchantGrpc;
 import pb.order.OrderCommon.ApiResponseOrderMonthly;
 import pb.order.OrderCommon.ApiResponseOrderYearly;
 import pb.order.stats.OrderRevenue.FindYearOrderByMerchant;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,7 +30,11 @@ public class OrderRevenueByMerchantGrpcHandler extends MutinyOrderRevenueByMerch
     OrderSoldOutByMerchantService orderSoldOutByMerchantService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderMonthly> findMonthlyRevenueByMerchant(FindYearOrderByMerchant request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         MonthOrderMerchantRequest domainReq = new MonthOrderMerchantRequest();
         domainReq.setYear(request.getYear());
         domainReq.setMonth(request.getMonth());
@@ -43,11 +50,15 @@ public class OrderRevenueByMerchantGrpcHandler extends MutinyOrderRevenueByMerch
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderYearly> findYearlyRevenueByMerchant(FindYearOrderByMerchant request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         YearOrderMerchantRequest domainReq = new YearOrderMerchantRequest();
         domainReq.setYear(request.getYear());
         domainReq.setMerchantId(request.getMerchantId());
@@ -62,7 +73,7 @@ public class OrderRevenueByMerchantGrpcHandler extends MutinyOrderRevenueByMerch
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.order.OrderCommon.OrderMonthlyResponse toProto(OrderMonthlyResponse r) {

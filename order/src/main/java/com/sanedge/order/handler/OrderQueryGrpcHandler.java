@@ -1,6 +1,5 @@
 package com.sanedge.order.handler;
 
-import java.util.List;
 import java.util.stream.Collectors;
 
 import com.sanedge.order.domain.requests.FindAllOrderRequest;
@@ -9,8 +8,10 @@ import com.sanedge.order.domain.response.OrderResponseDeleteAt;
 import com.sanedge.order.service.OrderQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.order.MutinyOrderQueryServiceGrpc;
@@ -19,6 +20,7 @@ import pb.order.OrderCommon.ApiResponsePaginationOrder;
 import pb.order.OrderCommon.ApiResponsePaginationOrderDeleteAt;
 import pb.order.OrderCommon.FindByIdOrderRequest;
 import pb.order.OrderQuery;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -28,6 +30,7 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
     OrderQueryService orderQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrder> findAll(OrderQuery.FindAllOrderRequest request) {
         FindAllOrderRequest domainReq = new FindAllOrderRequest();
         domainReq.setPage(request.getPage());
@@ -52,11 +55,15 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrder> findById(FindByIdOrderRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return orderQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseOrder.Builder builder = ApiResponseOrder.newBuilder()
@@ -71,11 +78,12 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrderDeleteAt> findByActive(OrderQuery.FindAllOrderRequest request) {
         FindAllOrderRequest domainReq = new FindAllOrderRequest();
         domainReq.setPage(request.getPage());
@@ -100,10 +108,11 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrderDeleteAt> findByTrashed(OrderQuery.FindAllOrderRequest request) {
         FindAllOrderRequest domainReq = new FindAllOrderRequest();
         domainReq.setPage(request.getPage());
@@ -128,7 +137,7 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.order.OrderCommon.OrderResponse toProto(OrderResponse r) {
@@ -161,7 +170,8 @@ public class OrderQueryGrpcHandler extends MutinyOrderQueryServiceGrpc.OrderQuer
         if (r == null) {
             return pb.order.OrderCommon.OrderResponseDeleteAt.getDefaultInstance();
         }
-        pb.order.OrderCommon.OrderResponseDeleteAt.Builder builder = pb.order.OrderCommon.OrderResponseDeleteAt.newBuilder();
+        pb.order.OrderCommon.OrderResponseDeleteAt.Builder builder = pb.order.OrderCommon.OrderResponseDeleteAt
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId().intValue());
         }

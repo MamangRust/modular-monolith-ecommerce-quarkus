@@ -61,8 +61,6 @@ class OrderQueryGrpcHandlerTest {
                 .build();
     }
 
-    // ========== findAll Tests ==========
-
     @Test
     void findAll_success_returnsPaginationResponse() {
         OrderQuery.FindAllOrderRequest request = OrderQuery.FindAllOrderRequest.newBuilder()
@@ -103,8 +101,6 @@ class OrderQueryGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== findById Tests ==========
-
     @Test
     void findById_success_returnsOrder() {
         OrderCommon.FindByIdOrderRequest request = OrderCommon.FindByIdOrderRequest.newBuilder()
@@ -140,8 +136,6 @@ class OrderQueryGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== findByActive Tests ==========
-
     @Test
     void findByActive_success_returnsPaginationResponse() {
         OrderQuery.FindAllOrderRequest request = OrderQuery.FindAllOrderRequest.newBuilder()
@@ -161,8 +155,6 @@ class OrderQueryGrpcHandlerTest {
         assertThat(response.getStatus()).isEqualTo("success");
         assertThat(response.getDataCount()).isEqualTo(1);
     }
-
-    // ========== findByTrashed Tests ==========
 
     @Test
     void findByTrashed_success_returnsPaginationResponse() {

@@ -2,7 +2,6 @@ package com.sanedge.category.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -57,13 +56,15 @@ class CategoryQueryServiceImplTest {
                 objectMapper,
                 tracingMetrics);
 
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private Category createMockCategory(Long id) {
@@ -77,8 +78,6 @@ class CategoryQueryServiceImplTest {
         c.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
         return c;
     }
-
-    // ========== findAll Tests ==========
 
     @Test
     void findAll_cacheMiss_returnsFromDb() {
@@ -118,8 +117,6 @@ class CategoryQueryServiceImplTest {
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findByActive Tests ==========
 
     @Test
     void findByActive_cacheMiss_returnsFromDb() {
@@ -161,8 +158,6 @@ class CategoryQueryServiceImplTest {
         assertThat(result.data()).hasSize(1);
     }
 
-    // ========== findByTrashed Tests ==========
-
     @Test
     void findByTrashed_cacheMiss_returnsFromDb() {
         FindAllCategoryRequest req = new FindAllCategoryRequest();
@@ -182,8 +177,6 @@ class CategoryQueryServiceImplTest {
         assertThat(result.message()).isEqualTo("Trashed categories retrieved successfully");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findById Tests ==========
 
     @Test
     void findById_cacheMiss_returnsFromDb() {

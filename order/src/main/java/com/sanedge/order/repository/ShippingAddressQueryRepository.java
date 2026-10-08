@@ -1,5 +1,6 @@
 package com.sanedge.order.repository;
 
+import com.sanedge.common.repository.PagedQuery;
 import com.sanedge.common.domain.response.PagedResult;
 import com.sanedge.order.entity.ShippingAddress;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
@@ -11,11 +12,11 @@ import java.util.Optional;
 public class ShippingAddressQueryRepository implements PanacheRepository<ShippingAddress> {
 
     public Uni<PagedResult<ShippingAddress>> findShippingAddresses(String keyword, int page, int size) {
+        keyword = keyword == null ? "" : keyword;
         var query = """
                     deletedAt IS NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(provinsi) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(negara) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
@@ -24,17 +25,15 @@ public class ShippingAddressQueryRepository implements PanacheRepository<Shippin
         var panacheQuery = find(query, keyword)
                 .page(page, size);
 
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<ShippingAddress>> findActiveShippingAddresses(String keyword, int page, int size) {
+        keyword = keyword == null ? "" : keyword;
         var query = """
                     deletedAt IS NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(provinsi) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(negara) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
@@ -43,17 +42,15 @@ public class ShippingAddressQueryRepository implements PanacheRepository<Shippin
         var panacheQuery = find(query, keyword)
                 .page(page, size);
 
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<ShippingAddress>> findTrashedShippingAddresses(String keyword, int page, int size) {
+        keyword = keyword == null ? "" : keyword;
         var query = """
                     deletedAt IS NOT NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(kota) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(provinsi) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(negara) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
@@ -62,9 +59,7 @@ public class ShippingAddressQueryRepository implements PanacheRepository<Shippin
         var panacheQuery = find(query, keyword)
                 .page(page, size);
 
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<Optional<ShippingAddress>> findByIdNative(Long id) {

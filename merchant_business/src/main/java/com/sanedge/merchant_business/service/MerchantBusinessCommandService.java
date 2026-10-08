@@ -13,7 +13,7 @@ public interface MerchantBusinessCommandService {
     Uni<ApiResponse<MerchantBusinessResponse>> updateMerchantBusiness(UpdateMerchantBusinessRequest req);
     Uni<ApiResponse<MerchantBusinessResponseDeleteAt>> trashedMerchantBusiness(Long merchantBusinessInfoId);
     Uni<ApiResponse<MerchantBusinessResponseDeleteAt>> restoreMerchantBusiness(Long merchantBusinessInfoId);
-    Uni<ApiResponse<Boolean>> deleteMerchantBusinessPermanent(Long merchantBusinessInfoId);
-    Uni<ApiResponse<Boolean>> restoreAllMerchantBusiness();
-    Uni<ApiResponse<Boolean>> deleteAllMerchantBusinessPermanent();
+    Uni<ApiResponse<Void>> deleteMerchantBusinessPermanent(Long merchantBusinessInfoId);
+    Uni<ApiResponse<Void>> restoreAllMerchantBusiness();
+    Uni<ApiResponse<Void>> deleteAllMerchantBusinessPermanent();
 }

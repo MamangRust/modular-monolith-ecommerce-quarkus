@@ -22,445 +22,330 @@ import com.sanedge.shipping_address.entity.ShippingAddress;
 import com.sanedge.common.exception.ResourceNotFoundException;
 import com.sanedge.shipping_address.repository.ShippingAddressQueryRepository;
 import com.sanedge.shipping_address.service.ShippingAddressQueryService;
+import com.sanedge.common.observability.TracingMetrics;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class ShippingAddressQueryServiceImpl implements ShippingAddressQueryService {
-    private static final Logger logger = LoggerFactory.getLogger(ShippingAddressQueryServiceImpl.class);
+        private static final Logger logger = LoggerFactory.getLogger(ShippingAddressQueryServiceImpl.class);
 
-    ShippingAddressQueryRepository shippingAddressQueryRepository;
-    OpenTelemetry openTelemetry;
-    RedisService redisService;
-    ObjectMapper objectMapper;
+        ShippingAddressQueryRepository shippingAddressQueryRepository;
+        RedisService redisService;
+        TracingMetrics tracingMetrics;
+        ObjectMapper objectMapper;
 
-    private final Tracer tracer;
-    private final LongCounter requestsTotal;
-    private final DoubleHistogram requestDurationSeconds;
+        private static final long LIST_CACHE_TTL_SECONDS = 300;
 
-    private static final long LIST_CACHE_TTL_SECONDS = 300;
-
-    @Inject
-    public ShippingAddressQueryServiceImpl(ShippingAddressQueryRepository shippingAddressQueryRepository,
-                                          OpenTelemetry openTelemetry,
-                                          RedisService redisService,
-                                          ObjectMapper objectMapper) {
-        this.shippingAddressQueryRepository = shippingAddressQueryRepository;
-        this.openTelemetry = openTelemetry;
-        this.redisService = redisService;
-        this.objectMapper = objectMapper;
-        this.tracer = openTelemetry.getTracer("shipping-address-query-service", "1.0.0");
-        Meter meter = openTelemetry.getMeter("shipping-address-query-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
-    }
-
-    private String toJson(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (JsonProcessingException e) {
-            logger.error("Error serializing object to JSON", e);
-            throw new RuntimeException("Failed to serialize object", e);
+        @Inject
+        public ShippingAddressQueryServiceImpl(ShippingAddressQueryRepository shippingAddressQueryRepository,
+                        RedisService redisService,
+                        TracingMetrics tracingMetrics,
+                        ObjectMapper objectMapper) {
+                this.shippingAddressQueryRepository = shippingAddressQueryRepository;
+                this.redisService = redisService;
+                this.tracingMetrics = tracingMetrics;
+                this.objectMapper = objectMapper;
         }
-    }
 
-    private <T> T fromJson(String json, Class<T> clazz) {
-        try {
-            return objectMapper.readValue(json, clazz);
-        } catch (JsonProcessingException e) {
-            logger.error("Error deserializing JSON to object", e);
-            throw new RuntimeException("Failed to deserialize JSON", e);
+        private String toJson(Object obj) {
+                try {
+                        return objectMapper.writeValueAsString(obj);
+                } catch (JsonProcessingException e) {
+                        logger.error("Error serializing object to JSON", e);
+                        throw new RuntimeException("Failed to serialize object", e);
+                }
         }
-    }
 
-    private <T> T fromJson(String json, TypeReference<T> typeReference) {
-        try {
-            return objectMapper.readValue(json, typeReference);
-        } catch (JsonProcessingException e) {
-            logger.error("Error deserializing JSON to object with TypeReference", e);
-            throw new RuntimeException("Failed to deserialize JSON", e);
+        private <T> T fromJson(String json, Class<T> clazz) {
+                try {
+                        return objectMapper.readValue(json, clazz);
+                } catch (JsonProcessingException e) {
+                        logger.error("Error deserializing JSON to object", e);
+                        throw new RuntimeException("Failed to deserialize JSON", e);
+                }
         }
-    }
 
-    @Override
-    public Uni<ApiResponsePagination<List<ShippingAddressResponse>>> findAll(FindAllShippingAddress req) {
-        String cacheKey = String.format("shipping:all:%d:%d:%s", req.getPage(), req.getPageSize(),
-                req.getSearch() != null ? req.getSearch() : "");
+        private <T> T fromJson(String json, TypeReference<T> typeReference) {
+                try {
+                        return objectMapper.readValue(json, typeReference);
+                } catch (JsonProcessingException e) {
+                        logger.error("Error deserializing JSON to object with TypeReference", e);
+                        throw new RuntimeException("Failed to deserialize JSON", e);
+                }
+        }
 
-        return redisService.getReactive(cacheKey)
-                .chain(cachedJson -> {
-                    if (cachedJson != null) {
-                        logger.info("Cache HIT for key: {}", cacheKey);
-                        ApiResponsePagination<List<ShippingAddressResponse>> response = fromJson(cachedJson,
-                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponse>>>() {});
-                        return Uni.createFrom().item(response);
-                    }
+        @Override
+        public Uni<ApiResponsePagination<List<ShippingAddressResponse>>> findAll(FindAllShippingAddress req) {
+                String cacheKey = String.format("shipping:all:%d:%d:%s", req.getPage(), req.getPageSize(),
+                                req.getSearch() != null ? req.getSearch() : "");
 
-                    logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findAllShippingAddresses")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "shipping-address-service")
-                            .setAttribute("operation", "find_all_shipping_addresses")
-                            .startSpan();
+                return redisService.getReactive(cacheKey)
+                                .chain(cachedJson -> {
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<ShippingAddressResponse>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponse>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                    int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
-                    int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-                    String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findAllShippingAddresses",
+                                                        "find_all_shipping_addresses",
+                                                        Attributes.builder()
+                                                                        .put("address.page", req.getPage())
+                                                                        .put("address.size", req.getPageSize())
+                                                                        .build(),
+                                                        () -> shippingAddressQueryRepository.findShippingAddresses(req)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<ShippingAddressResponse>> response = buildPaginatedResponse(
+                                                                                                pagedResult,
+                                                                                                req.getPage(),
+                                                                                                req.getPageSize(),
+                                                                                                "Shipping addresses retrieved successfully",
+                                                                                                ShippingAddressResponse::from);
 
-                    return shippingAddressQueryRepository.findShippingAddresses(search, page, size)
-                            .chain(pagedResult -> {
-                                span.setAttribute("address.count", pagedResult.getTotalRecords());
-                                span.setAttribute("address.page", req.getPage());
-                                span.setAttribute("address.size", req.getPageSize());
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} shipping addresses",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
+        }
 
-                                ApiResponsePagination<List<ShippingAddressResponse>> response = buildPaginatedResponse(
-                                        pagedResult, req.getPage(), req.getPageSize(), "Shipping addresses retrieved successfully",
-                                        ShippingAddressResponse::from);
+        @Override
+        public Uni<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>> findByActive(
+                        FindAllShippingAddress req) {
+                String cacheKey = String.format("shipping:active:%d:%d:%s", req.getPage(), req.getPageSize(),
+                                req.getSearch() != null ? req.getSearch() : "");
 
-                                return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                        .map(v -> {
-                                            logger.info("Cached response for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
+                return redisService.getReactive(cacheKey)
+                                .chain(cachedJson -> {
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_all_shipping_addresses",
-                                                    AttributeKey.stringKey("status"), "success"));
-                                            return response;
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error finding all shipping addresses", e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findActiveShippingAddresses",
+                                                        "find_active_shipping_addresses",
+                                                        Attributes.builder()
+                                                                        .put("address.page", req.getPage())
+                                                                        .put("address.size", req.getPageSize())
+                                                                        .build(),
+                                                        () -> shippingAddressQueryRepository
+                                                                        .findActiveShippingAddresses(req)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = buildPaginatedResponse(
+                                                                                                pagedResult,
+                                                                                                req.getPage(),
+                                                                                                req.getPageSize(),
+                                                                                                "Active shipping addresses retrieved successfully",
+                                                                                                ShippingAddressResponseDeleteAt::from);
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_all_shipping_addresses",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_all_shipping_addresses"));
-                            });
-                });
-    }
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} active shipping addresses",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
+        }
 
-    @Override
-    public Uni<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>> findByActive(FindAllShippingAddress req) {
-        String cacheKey = String.format("shipping:active:%d:%d:%s", req.getPage(), req.getPageSize(),
-                req.getSearch() != null ? req.getSearch() : "");
+        @Override
+        public Uni<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>> findByTrashed(
+                        FindAllShippingAddress req) {
+                String cacheKey = String.format("shipping:trashed:%d:%d:%s", req.getPage(), req.getPageSize(),
+                                req.getSearch() != null ? req.getSearch() : "");
 
-        return redisService.getReactive(cacheKey)
-                .chain(cachedJson -> {
-                    if (cachedJson != null) {
-                        logger.info("Cache HIT for key: {}", cacheKey);
-                        ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = fromJson(cachedJson,
-                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>>() {});
-                        return Uni.createFrom().item(response);
-                    }
+                return redisService.getReactive(cacheKey)
+                                .chain(cachedJson -> {
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                    logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findActiveShippingAddresses")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "shipping-address-service")
-                            .setAttribute("operation", "find_active_shipping_addresses")
-                            .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findTrashedShippingAddresses",
+                                                        "find_trashed_shipping_addresses",
+                                                        Attributes.builder()
+                                                                        .put("address.page", req.getPage())
+                                                                        .put("address.size", req.getPageSize())
+                                                                        .build(),
+                                                        () -> shippingAddressQueryRepository
+                                                                        .findTrashedShippingAddresses(req)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = buildPaginatedResponse(
+                                                                                                pagedResult,
+                                                                                                req.getPage(),
+                                                                                                req.getPageSize(),
+                                                                                                "Trashed shipping addresses retrieved successfully",
+                                                                                                ShippingAddressResponseDeleteAt::from);
 
-                    int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
-                    int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-                    String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} trashed shipping addresses",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
+        }
 
-                    return shippingAddressQueryRepository.findActiveShippingAddresses(search, page, size)
-                            .chain(pagedResult -> {
-                                span.setAttribute("address.count", pagedResult.getTotalRecords());
-                                span.setAttribute("address.page", req.getPage());
-                                span.setAttribute("address.size", req.getPageSize());
+        @Override
+        public Uni<ApiResponse<ShippingAddressResponse>> findById(Integer shippingId) {
+                String cacheKey = "shipping:id:" + shippingId;
 
-                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = buildPaginatedResponse(
-                                        pagedResult, req.getPage(), req.getPageSize(), "Active shipping addresses retrieved successfully",
-                                        ShippingAddressResponseDeleteAt::from);
+                return redisService.getReactive(cacheKey)
+                                .chain(cachedJson -> {
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ShippingAddressResponse cachedAddress = fromJson(cachedJson,
+                                                                ShippingAddressResponse.class);
+                                                return Uni.createFrom().item(ApiResponse.success(
+                                                                "Shipping address retrieved successfully",
+                                                                cachedAddress));
+                                        }
 
-                                return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                        .map(v -> {
-                                            logger.info("Cached response for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findShippingAddressById",
+                                                        "find_shipping_address_by_id",
+                                                        Attributes.builder().put("shipping.id", shippingId.toString())
+                                                                        .build(),
+                                                        () -> shippingAddressQueryRepository
+                                                                        .findByIdNative(shippingId.longValue())
+                                                                        .chain(optionalAddress -> {
+                                                                                if (optionalAddress.isEmpty()) {
+                                                                                        logger.warn("Shipping address not found with ID: {}",
+                                                                                                        shippingId);
+                                                                                        throw new ResourceNotFoundException(
+                                                                                                        "Shipping address not found with ID: "
+                                                                                                                        + shippingId);
+                                                                                }
 
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_active_shipping_addresses",
-                                                    AttributeKey.stringKey("status"), "success"));
-                                            return response;
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error finding active shipping addresses", e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
+                                                                                ShippingAddress address = optionalAddress
+                                                                                                .get();
+                                                                                ShippingAddressResponse addressResponse = ShippingAddressResponse
+                                                                                                .from(address);
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_active_shipping_addresses",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_active_shipping_addresses"));
-                            });
-                });
-    }
+                                                                                return redisService.setReactive(
+                                                                                                cacheKey,
+                                                                                                toJson(addressResponse))
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached shipping address for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully found shipping address with city: {}",
+                                                                                                                        address.getKota());
+                                                                                                        return ApiResponse
+                                                                                                                        .success("Shipping address retrieved successfully",
+                                                                                                                                        addressResponse);
+                                                                                                });
+                                                                        }));
+                                });
+        }
 
-    @Override
-    public Uni<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>> findByTrashed(FindAllShippingAddress req) {
-        String cacheKey = String.format("shipping:trashed:%d:%d:%s", req.getPage(), req.getPageSize(),
-                req.getSearch() != null ? req.getSearch() : "");
+        @Override
+        public Uni<ApiResponse<ShippingAddressResponse>> findByOrder(Integer orderId) {
+                String cacheKey = "shipping:order:" + orderId;
 
-        return redisService.getReactive(cacheKey)
-                .chain(cachedJson -> {
-                    if (cachedJson != null) {
-                        logger.info("Cache HIT for key: {}", cacheKey);
-                        ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = fromJson(cachedJson,
-                                new TypeReference<ApiResponsePagination<List<ShippingAddressResponseDeleteAt>>>() {});
-                        return Uni.createFrom().item(response);
-                    }
+                return redisService.getReactive(cacheKey)
+                                .chain(cachedJson -> {
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ShippingAddressResponse cachedAddress = fromJson(cachedJson,
+                                                                ShippingAddressResponse.class);
+                                                return Uni.createFrom().item(ApiResponse.success(
+                                                                "Shipping address retrieved successfully",
+                                                                cachedAddress));
+                                        }
 
-                    logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findTrashedShippingAddresses")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "shipping-address-service")
-                            .setAttribute("operation", "find_trashed_shipping_addresses")
-                            .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findShippingAddressByOrderId",
+                                                        "find_shipping_address_by_order_id",
+                                                        Attributes.builder().put("order.id", orderId.toString())
+                                                                        .build(),
+                                                        () -> shippingAddressQueryRepository.findByOrderId(orderId)
+                                                                        .chain(optionalAddress -> {
+                                                                                if (optionalAddress.isEmpty()) {
+                                                                                        logger.warn("Shipping address not found for order ID: {}",
+                                                                                                        orderId);
+                                                                                        throw new ResourceNotFoundException(
+                                                                                                        "Shipping address not found for order ID: "
+                                                                                                                        + orderId);
+                                                                                }
 
-                    int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
-                    int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-                    String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+                                                                                ShippingAddress address = optionalAddress
+                                                                                                .get();
+                                                                                ShippingAddressResponse addressResponse = ShippingAddressResponse
+                                                                                                .from(address);
 
-                    return shippingAddressQueryRepository.findTrashedShippingAddresses(search, page, size)
-                            .chain(pagedResult -> {
-                                span.setAttribute("address.count", pagedResult.getTotalRecords());
-                                span.setAttribute("address.page", req.getPage());
-                                span.setAttribute("address.size", req.getPageSize());
+                                                                                return redisService.setReactive(
+                                                                                                cacheKey,
+                                                                                                toJson(addressResponse))
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached shipping address for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully found shipping address with city: {}",
+                                                                                                                        address.getKota());
+                                                                                                        return ApiResponse
+                                                                                                                        .success("Shipping address retrieved successfully",
+                                                                                                                                        addressResponse);
+                                                                                                });
+                                                                        }));
+                                });
+        }
 
-                                ApiResponsePagination<List<ShippingAddressResponseDeleteAt>> response = buildPaginatedResponse(
-                                        pagedResult, req.getPage(), req.getPageSize(), "Trashed shipping addresses retrieved successfully",
-                                        ShippingAddressResponseDeleteAt::from);
+        private <T, R> ApiResponsePagination<List<R>> buildPaginatedResponse(
+                        PagedResult<T> pagedResult,
+                        int pageParam,
+                        int sizeParam,
+                        String successMessage,
+                        Function<T, R> mapper) {
 
-                                return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                        .map(v -> {
-                                            logger.info("Cached response for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
+                List<R> data = pagedResult.getData().stream()
+                                .map(mapper)
+                                .collect(Collectors.toList());
 
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_trashed_shipping_addresses",
-                                                    AttributeKey.stringKey("status"), "success"));
-                                            return response;
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error finding trashed shipping addresses", e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
+                int totalRecords = pagedResult.getTotalRecords();
+                int size = sizeParam > 0 ? sizeParam : 1;
+                int totalPages = (int) Math.ceil((double) totalRecords / size);
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_trashed_shipping_addresses",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_trashed_shipping_addresses"));
-                            });
-                });
-    }
+                PaginationMeta pagination = new PaginationMeta(pageParam, size, totalPages, totalRecords);
 
-    @Override
-    public Uni<ApiResponse<ShippingAddressResponse>> findById(Integer shippingId) {
-        String cacheKey = "shipping:id:" + shippingId;
-
-        return redisService.getReactive(cacheKey)
-                .chain(cachedJson -> {
-                    if (cachedJson != null) {
-                        logger.info("Cache HIT for key: {}", cacheKey);
-                        ShippingAddressResponse cachedAddress = fromJson(cachedJson, ShippingAddressResponse.class);
-                        return Uni.createFrom().item(ApiResponse.success("Shipping address retrieved successfully", cachedAddress));
-                    }
-
-                    logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findShippingAddressById")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "shipping-address-service")
-                            .setAttribute("operation", "find_shipping_address_by_id")
-                            .setAttribute("shipping.id", shippingId.toString())
-                            .startSpan();
-
-                    return shippingAddressQueryRepository.findByIdNative(shippingId.longValue())
-                            .chain(optionalAddress -> {
-                                if (optionalAddress.isEmpty()) {
-                                    logger.warn("Shipping address not found with ID: {}", shippingId);
-                                    span.setStatus(StatusCode.ERROR, "Shipping address not found");
-                                    span.setAttribute("address.found", false);
-
-                                    requestsTotal.add(1, Attributes.of(
-                                            AttributeKey.stringKey("operation"), "find_shipping_address_by_id",
-                                            AttributeKey.stringKey("status"), "failed",
-                                            AttributeKey.stringKey("error_type"), "not_found"));
-
-                                    throw new ResourceNotFoundException("Shipping address not found with ID: " + shippingId);
-                                }
-
-                                ShippingAddress address = optionalAddress.get();
-                                span.setAttribute("address.found", true);
-                                span.setAttribute("address.city", address.getKota());
-
-                                ShippingAddressResponse addressResponse = ShippingAddressResponse.from(address);
-
-                                return redisService.setReactive(cacheKey, toJson(addressResponse))
-                                        .map(v -> {
-                                            logger.info("Cached shipping address for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_shipping_address_by_id",
-                                                    AttributeKey.stringKey("status"), "success"));
-
-                                            return ApiResponse.success("Shipping address retrieved successfully", addressResponse);
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error finding shipping address by ID: {}", shippingId, e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_shipping_address_by_id",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_shipping_address_by_id"));
-                            });
-                });
-    }
-
-    @Override
-    public Uni<ApiResponse<ShippingAddressResponse>> findByOrder(Integer orderId) {
-        String cacheKey = "shipping:order:" + orderId;
-
-        return redisService.getReactive(cacheKey)
-                .chain(cachedJson -> {
-                    if (cachedJson != null) {
-                        logger.info("Cache HIT for key: {}", cacheKey);
-                        ShippingAddressResponse cachedAddress = fromJson(cachedJson, ShippingAddressResponse.class);
-                        return Uni.createFrom().item(ApiResponse.success("Shipping address retrieved successfully", cachedAddress));
-                    }
-
-                    logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findShippingAddressByOrderId")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "shipping-address-service")
-                            .setAttribute("operation", "find_shipping_address_by_order_id")
-                            .setAttribute("order.id", orderId.toString())
-                            .startSpan();
-
-                    return shippingAddressQueryRepository.findByOrderId(orderId)
-                            .chain(optionalAddress -> {
-                                if (optionalAddress.isEmpty()) {
-                                    logger.warn("Shipping address not found for order ID: {}", orderId);
-                                    span.setStatus(StatusCode.ERROR, "Shipping address not found");
-                                    span.setAttribute("address.found", false);
-
-                                    requestsTotal.add(1, Attributes.of(
-                                            AttributeKey.stringKey("operation"), "find_shipping_address_by_order_id",
-                                            AttributeKey.stringKey("status"), "failed",
-                                            AttributeKey.stringKey("error_type"), "not_found"));
-
-                                    throw new ResourceNotFoundException("Shipping address not found for order ID: " + orderId);
-                                }
-
-                                ShippingAddress address = optionalAddress.get();
-                                span.setAttribute("address.found", true);
-                                span.setAttribute("address.city", address.getKota());
-
-                                ShippingAddressResponse addressResponse = ShippingAddressResponse.from(address);
-
-                                return redisService.setReactive(cacheKey, toJson(addressResponse))
-                                        .map(v -> {
-                                            logger.info("Cached shipping address for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_shipping_address_by_order_id",
-                                                    AttributeKey.stringKey("status"), "success"));
-
-                                            return ApiResponse.success("Shipping address retrieved successfully", addressResponse);
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error finding shipping address by order ID: {}", orderId, e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_shipping_address_by_order_id",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_shipping_address_by_order_id"));
-                            });
-                });
-    }
-
-    private <T, R> ApiResponsePagination<List<R>> buildPaginatedResponse(
-            PagedResult<T> pagedResult,
-            int pageParam,
-            int sizeParam,
-            String successMessage,
-            Function<T, R> mapper) {
-
-        List<R> data = pagedResult.getData().stream()
-                .map(mapper)
-                .collect(Collectors.toList());
-
-        int totalRecords = pagedResult.getTotalRecords();
-        int size = sizeParam > 0 ? sizeParam : 1;
-        int totalPages = (int) Math.ceil((double) totalRecords / size);
-
-        PaginationMeta pagination = new PaginationMeta(pageParam, size, totalPages, totalRecords);
-
-        return new ApiResponsePagination<>("success", successMessage, data, pagination);
-    }
+                return new ApiResponsePagination<>("success", successMessage, data, pagination);
+        }
 }

@@ -3,7 +3,6 @@ package com.sanedge.review.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -24,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
@@ -69,21 +69,17 @@ class ReviewCommandServiceImplTest {
                 reviewCommandRepository,
                 validator,
                 redisService,
-                tracingMetrics
-        );
-
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(),
-                        any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(invocation -> invocation.getArgument(3));
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> invocation.getArgument(2));
+                tracingMetrics);
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
     }
 
-    // Helper to assign PanacheEntity.id (a public field, no setter)
     private void setReviewId(Review review, Long id) {
         try {
-            Field f = review.getClass().getSuperclass().getSuperclass().getDeclaredField("id");
+            Field f = review.getClass().getDeclaredField("id");
             f.setAccessible(true);
             f.set(review, id);
         } catch (Exception e) {
@@ -143,12 +139,13 @@ class ReviewCommandServiceImplTest {
             request.setUserId(1);
             request.setProductId(100);
             request.setName("John Doe");
-            request.setRating(0); // out of bounds
+            request.setRating(0);
             request.setComment("");
 
             Set<ConstraintViolation<CreateReviewRequest>> violations = new HashSet<>();
             ConstraintViolation<CreateReviewRequest> v = org.mockito.Mockito.mock(ConstraintViolation.class);
-            org.mockito.Mockito.when(v.getPropertyPath()).thenReturn(org.mockito.Mockito.mock(jakarta.validation.Path.class));
+            org.mockito.Mockito.when(v.getPropertyPath())
+                    .thenReturn(org.mockito.Mockito.mock(jakarta.validation.Path.class));
             org.mockito.Mockito.when(v.getMessage()).thenReturn("must not be blank");
             violations.add(v);
             when(validator.validate(request)).thenReturn(violations);
@@ -344,5 +341,24 @@ class ReviewCommandServiceImplTest {
                     .isInstanceOf(ResourceNotFoundException.class)
                     .hasMessageContaining("No trashed reviews found");
         }
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

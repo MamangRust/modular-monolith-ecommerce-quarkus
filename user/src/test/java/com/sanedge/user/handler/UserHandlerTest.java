@@ -47,10 +47,6 @@ class UserHandlerGrpcTest {
     @Mock
     private UserQueryService userQueryService;
 
-    // ==========================================
-    // 1. USER COMMAND GRPC HANDLER TESTS
-    // ==========================================
-
     @Nested
     class UserCommandGrpcHandlerTest {
 
@@ -106,7 +102,7 @@ class UserHandlerGrpcTest {
             ApiResponseUser response = commandHandler.update(request).await().indefinitely();
 
             assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getData().getFirstname()).isEqualTo("John"); // Mapped from domain mock
+            assertThat(response.getData().getFirstname()).isEqualTo("John");
         }
 
         @Test
@@ -216,10 +212,6 @@ class UserHandlerGrpcTest {
         }
     }
 
-    // ==========================================
-    // 2. USER QUERY GRPC HANDLER TESTS
-    // ==========================================
-
     @Nested
     class UserQueryGrpcHandlerTest {
 
@@ -255,9 +247,7 @@ class UserHandlerGrpcTest {
         @Test
         void findById_whenDataIsNull_doesNotSetData() {
             FindByIdUserRequest request = FindByIdUserRequest.newBuilder().setId(99).build();
-            // Simulasi skenario dimana status success tapi data null (meskipun di logic
-            // seharusnya throw,
-            // handler harus aman tidak NPE saat mapping)
+
             when(userQueryService.findById(99L))
                     .thenReturn(Uni.createFrom().item(ApiResponse.success("Not found", null)));
 
@@ -338,10 +328,6 @@ class UserHandlerGrpcTest {
             assertThat(response.getPagination().getTotalRecords()).isEqualTo(1);
         }
     }
-
-    // ==========================================
-    // SHARED HELPER METHODS
-    // ==========================================
 
     private void injectDependencies(Object handler) {
         try {

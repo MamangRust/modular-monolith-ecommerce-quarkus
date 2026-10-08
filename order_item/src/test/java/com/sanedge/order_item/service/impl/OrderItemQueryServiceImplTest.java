@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import java.lang.reflect.Field;
 import java.sql.Timestamp;
@@ -41,10 +42,11 @@ class OrderItemQueryServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(2)).get());
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(3)).get());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
 
         service = new OrderItemQueryServiceImpl(orderItemRepository, tracingMetrics);
     }
@@ -52,10 +54,12 @@ class OrderItemQueryServiceImplTest {
     private OrderItem mkItem(Long id) {
         OrderItem o = new OrderItem();
         try {
-            Field idField = o.getClass().getSuperclass().getSuperclass().getDeclaredField("id");
+            Field idField = o.getClass().getDeclaredField("id");
             idField.setAccessible(true);
             idField.set(o, id);
-        } catch (Exception e) { throw new RuntimeException(e); }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         o.setOrderId(1);
         o.setProductId(100);
         o.setPrice(15000);
@@ -72,8 +76,8 @@ class OrderItemQueryServiceImplTest {
         req.setPageSize(10);
         when(orderItemRepository.findOrderItems(any(FindAllOrderItemRequest.class)))
                 .thenReturn(Uni.createFrom().item(new PagedResult<>(List.of(mkItem(1L)), 1)));
-        ApiResponse<List<com.sanedge.order_item.domain.response.OrderItemResponse>> result =
-                service.findAll(req).await().indefinitely();
+        ApiResponse<List<com.sanedge.order_item.domain.response.OrderItemResponse>> result = service.findAll(req)
+                .await().indefinitely();
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.message()).isEqualTo("Order items retrieved successfully");
     }
@@ -116,5 +120,24 @@ class OrderItemQueryServiceImplTest {
         var result = service.findByOrder(1L).await().indefinitely();
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

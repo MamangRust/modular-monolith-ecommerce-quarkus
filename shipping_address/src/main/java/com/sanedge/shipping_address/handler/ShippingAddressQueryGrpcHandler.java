@@ -6,8 +6,10 @@ import com.sanedge.shipping_address.domain.response.ShippingAddressResponseDelet
 import com.sanedge.shipping_address.service.ShippingAddressQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.shipping_address.MutinyShippingQueryServiceGrpc;
@@ -16,6 +18,7 @@ import pb.shipping_address.ShippingAddressCommon.ApiResponseShipping;
 import pb.shipping_address.ShippingAddressCommon.ApiResponsePaginationShipping;
 import pb.shipping_address.ShippingAddressCommon.ApiResponsePaginationShippingDeleteAt;
 import pb.shipping_address.ShippingAddressCommon.FindByIdShippingRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -25,6 +28,7 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
     ShippingAddressQueryService shippingAddressQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationShipping> findAll(FindAllShippingRequest request) {
         FindAllShippingAddress req = new FindAllShippingAddress();
         req.setPage(request.getPage());
@@ -46,11 +50,15 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseShipping> findById(FindByIdShippingRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return shippingAddressQueryService.findById(request.getId())
                 .map(apiResp -> {
                     ApiResponseShipping.Builder builder = ApiResponseShipping.newBuilder()
@@ -65,12 +73,16 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseShipping> findByOrder(FindByIdShippingRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return shippingAddressQueryService.findByOrder(request.getId())
                 .map(apiResp -> {
                     ApiResponseShipping.Builder builder = ApiResponseShipping.newBuilder()
@@ -85,11 +97,12 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationShippingDeleteAt> findByActive(FindAllShippingRequest request) {
         FindAllShippingAddress req = new FindAllShippingAddress();
         req.setPage(request.getPage());
@@ -111,10 +124,11 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationShippingDeleteAt> findByTrashed(FindAllShippingRequest request) {
         FindAllShippingAddress req = new FindAllShippingAddress();
         req.setPage(request.getPage());
@@ -136,7 +150,7 @@ public class ShippingAddressQueryGrpcHandler extends MutinyShippingQueryServiceG
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.shipping_address.ShippingAddressCommon.ShippingResponse toProto(ShippingAddressResponse r) {

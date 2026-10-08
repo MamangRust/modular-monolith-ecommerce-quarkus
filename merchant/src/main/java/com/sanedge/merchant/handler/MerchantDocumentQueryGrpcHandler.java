@@ -1,33 +1,34 @@
 package com.sanedge.merchant.handler;
 
-import com.sanedge.merchant.service.MerchantDocumentQueryService;
-import com.sanedge.common.domain.response.ApiResponse;
-import com.sanedge.common.domain.response.ApiResponsePagination;
 import com.sanedge.merchant.domain.response.MerchantDocumentResponse;
 import com.sanedge.merchant.domain.response.MerchantDocumentResponseDeleteAt;
+import com.sanedge.merchant.service.MerchantDocumentQueryService;
 
-import pb.merchant_document.MutinyMerchantDocumentQueryServiceGrpc;
-import pb.merchant_document.MerchantDocumentQuery.FindAllMerchantDocumentsRequest;
-import pb.merchant_document.MerchantDocumentQuery.FindMerchantDocumentByIdRequest;
+import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
+import io.quarkus.grpc.GrpcService;
+import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import pb.merchant_document.MerchantDocumentCommon.ApiResponseMerchantDocument;
 import pb.merchant_document.MerchantDocumentCommon.ApiResponsePaginationMerchantDocument;
 import pb.merchant_document.MerchantDocumentCommon.ApiResponsePaginationMerchantDocumentAt;
-
-import io.grpc.Status;
-import io.quarkus.grpc.GrpcService;
-import io.smallrye.mutiny.Uni;
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
-import java.util.List;
+import pb.merchant_document.MerchantDocumentQuery.FindAllMerchantDocumentsRequest;
+import pb.merchant_document.MerchantDocumentQuery.FindMerchantDocumentByIdRequest;
+import pb.merchant_document.MutinyMerchantDocumentQueryServiceGrpc;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
-public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQueryServiceGrpc.MerchantDocumentQueryServiceImplBase {
+public class MerchantDocumentQueryGrpcHandler
+        extends MutinyMerchantDocumentQueryServiceGrpc.MerchantDocumentQueryServiceImplBase {
 
     @Inject
     MerchantDocumentQueryService merchantDocumentQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantDocument> findAll(FindAllMerchantDocumentsRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchantDocuments domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchantDocuments();
         domainReq.setPage(request.getPage());
@@ -36,7 +37,8 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
 
         return merchantDocumentQueryService.findAll(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantDocument.Builder builder = ApiResponsePaginationMerchantDocument.newBuilder()
+                    ApiResponsePaginationMerchantDocument.Builder builder = ApiResponsePaginationMerchantDocument
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -49,10 +51,11 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantDocument> findAllActive(FindAllMerchantDocumentsRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchantDocuments domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchantDocuments();
         domainReq.setPage(request.getPage());
@@ -61,7 +64,8 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
 
         return merchantDocumentQueryService.findAllActive(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantDocument.Builder builder = ApiResponsePaginationMerchantDocument.newBuilder()
+                    ApiResponsePaginationMerchantDocument.Builder builder = ApiResponsePaginationMerchantDocument
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -74,10 +78,11 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantDocumentAt> findAllTrashed(FindAllMerchantDocumentsRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchantDocuments domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchantDocuments();
         domainReq.setPage(request.getPage());
@@ -86,7 +91,8 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
 
         return merchantDocumentQueryService.findAllTrashed(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantDocumentAt.Builder builder = ApiResponsePaginationMerchantDocumentAt.newBuilder()
+                    ApiResponsePaginationMerchantDocumentAt.Builder builder = ApiResponsePaginationMerchantDocumentAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -99,11 +105,15 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseMerchantDocument> findById(FindMerchantDocumentByIdRequest request) {
+        if (request.getDocumentId() <= 0) {
+            return IdValidator.invalid("Document id");
+        }
         return merchantDocumentQueryService.findById((long) request.getDocumentId())
                 .map(apiResp -> {
                     ApiResponseMerchantDocument.Builder builder = ApiResponseMerchantDocument.newBuilder()
@@ -118,7 +128,7 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
                     if (e instanceof jakarta.ws.rs.NotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -126,7 +136,8 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
         if (r == null) {
             return pb.merchant_document.MerchantDocumentCommon.MerchantDocument.getDefaultInstance();
         }
-        pb.merchant_document.MerchantDocumentCommon.MerchantDocument.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocument.newBuilder();
+        pb.merchant_document.MerchantDocumentCommon.MerchantDocument.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocument
+                .newBuilder();
         if (r.getDocumentId() != null) {
             builder.setDocumentId(r.getDocumentId().intValue());
         }
@@ -154,11 +165,13 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
         return builder.build();
     }
 
-    private pb.merchant_document.MerchantDocumentCommon.MerchantDocument toProtoMerchantDocument(MerchantDocumentResponseDeleteAt r) {
+    private pb.merchant_document.MerchantDocumentCommon.MerchantDocument toProtoMerchantDocument(
+            MerchantDocumentResponseDeleteAt r) {
         if (r == null) {
             return pb.merchant_document.MerchantDocumentCommon.MerchantDocument.getDefaultInstance();
         }
-        pb.merchant_document.MerchantDocumentCommon.MerchantDocument.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocument.newBuilder();
+        pb.merchant_document.MerchantDocumentCommon.MerchantDocument.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocument
+                .newBuilder();
         if (r.getDocumentId() != null) {
             builder.setDocumentId(r.getDocumentId().intValue());
         }
@@ -186,11 +199,13 @@ public class MerchantDocumentQueryGrpcHandler extends MutinyMerchantDocumentQuer
         return builder.build();
     }
 
-    private pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt toProto(MerchantDocumentResponseDeleteAt r) {
+    private pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt toProto(
+            MerchantDocumentResponseDeleteAt r) {
         if (r == null) {
             return pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt.getDefaultInstance();
         }
-        pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt.newBuilder();
+        pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt.Builder builder = pb.merchant_document.MerchantDocumentCommon.MerchantDocumentDeleteAt
+                .newBuilder();
         if (r.getDocumentId() != null) {
             builder.setDocumentId(r.getDocumentId().intValue());
         }

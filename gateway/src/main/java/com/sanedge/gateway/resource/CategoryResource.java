@@ -3,6 +3,7 @@ package com.sanedge.gateway.resource;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
+import com.sanedge.gateway.dto.CategoryDto;
 import com.sanedge.gateway.service.CategoryService;
 
 import io.smallrye.mutiny.Uni;
@@ -227,7 +228,7 @@ public class CategoryResource {
         @Path("/create")
         @RolesAllowed("ROLE_ADMIN")
         @Operation(summary = "Create a new category")
-        public Uni<Response> createCategory(pb.category.CategoryCommand.CreateCategoryRequest body) {
+        public Uni<Response> createCategory(CategoryDto.CreateCategoryRequest body) {
                 return categoryService.create(body)
                                 .map(dto -> Response.status(Response.Status.CREATED)
                                                 .entity(dto)
@@ -239,7 +240,7 @@ public class CategoryResource {
         @RolesAllowed("ROLE_ADMIN")
         @Operation(summary = "Update category")
         public Uni<Response> updateCategory(@PathParam("id") int id,
-                        pb.category.CategoryCommand.UpdateCategoryRequest body) {
+                        CategoryDto.UpdateCategoryRequest body) {
                 return categoryService.update(id, body)
                                 .map(dto -> Response.ok(dto).build());
         }

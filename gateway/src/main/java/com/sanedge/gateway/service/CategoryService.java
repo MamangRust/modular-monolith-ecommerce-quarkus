@@ -20,8 +20,8 @@ public interface CategoryService {
     Uni<CategoryDto.ApiResponseYearlyPrice> findYearPriceByMerchant(int merchantId, int year);
     Uni<CategoryDto.ApiResponseMonthlyPrice> findMonthPriceById(int categoryId, int year);
     Uni<CategoryDto.ApiResponseYearlyPrice> findYearPriceById(int categoryId, int year);
-    Uni<CategoryDto.ApiResponseCategory> create(pb.category.CategoryCommand.CreateCategoryRequest body);
-    Uni<CategoryDto.ApiResponseCategory> update(int id, pb.category.CategoryCommand.UpdateCategoryRequest body);
+    Uni<CategoryDto.ApiResponseCategory> create(CategoryDto.CreateCategoryRequest body);
+    Uni<CategoryDto.ApiResponseCategory> update(int id, CategoryDto.UpdateCategoryRequest body);
     Uni<CategoryDto.ApiResponseCategory> trash(int id);
     Uni<CategoryDto.ApiResponseCategory> restore(int id);
     Uni<CategoryDto.SimpleResponse> deleteCategoryPermanent(int id);

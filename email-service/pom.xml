@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -21,10 +21,35 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
+        <!-- Shared Redis helper for durable consumer idempotency -->
+        <dependency>
+            <groupId>com.sanedge</groupId>
+            <artifactId>common</artifactId>
+        </dependency>
+
+        <!-- Reusable test fixtures from common: KafkaResource, KafkaTestUtils,
+             CountingTracingMetrics, RedisResource. -->
+        <dependency>
+            <groupId>com.sanedge</groupId>
+            <artifactId>common</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Quarkus mailer (Reactive & Imperative) -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-mailer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-redis-client</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-devservices</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Vert.x & Vert.x Kafka Client -->
@@ -35,6 +60,13 @@
         <dependency>
             <groupId>io.vertx</groupId>
             <artifactId>vertx-kafka-client</artifactId>
+        </dependency>
+        <!-- Consumers must also decompress lz4-compressed records (producers use
+             compression.type=lz4). The platform BOM excludes org.lz4:lz4-java;
+             version is managed in the root pom. -->
+        <dependency>
+            <groupId>org.lz4</groupId>
+            <artifactId>lz4-java</artifactId>
         </dependency>
 
         <!-- CDI -->
@@ -47,6 +79,28 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5-mockito</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.smallrye.reactive</groupId>
+            <artifactId>mutiny-test-utils</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers (used by KafkaResource / RedisResource from common) -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>kafka</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

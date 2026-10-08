@@ -23,329 +23,319 @@ import com.sanedge.review.service.ReviewCommandService;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
-import pb.review.MutinyReviewCommandServiceGrpc;
 import pb.review.ReviewCommon.FindByIdReviewRequest;
 
 @ExtendWith(MockitoExtension.class)
 class ReviewCommandGrpcHandlerTest {
 
-    @Mock
-    private ReviewCommandService reviewCommandService;
+        @Mock
+        private ReviewCommandService reviewCommandService;
 
-    private ReviewCommandGrpcHandler handler;
+        private ReviewCommandGrpcHandler handler;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        handler = new ReviewCommandGrpcHandler();
-        java.lang.reflect.Field field = ReviewCommandGrpcHandler.class.getDeclaredField("reviewCommandService");
-        field.setAccessible(true);
-        field.set(handler, reviewCommandService);
-    }
-
-    @Nested
-    @DisplayName("Create Review Handler Tests")
-    class CreateReviewHandlerTests {
-
-        @Test
-        @DisplayName("Should create review successfully via gRPC handler")
-        void shouldCreateReviewSuccessfully() {
-            // Given
-            pb.review.ReviewCommand.CreateReviewRequest request = pb.review.ReviewCommand.CreateReviewRequest.newBuilder()
-                    .setUserId(1)
-                    .setProductId(100)
-                    .setName("John Doe")
-                    .setRating(5)
-                    .setComment("Great product!")
-                    .build();
-
-            ReviewResponse responseData = ReviewResponse.builder()
-                    .id(1)
-                    .userId(1)
-                    .productId(100)
-                    .name("John Doe")
-                    .rating(5)
-                    .comment("Great product!")
-                    .build();
-
-            ApiResponse<ReviewResponse> serviceResponse = ApiResponse.success("Review created successfully!", responseData);
-
-            when(reviewCommandService.create(any(CreateReviewRequest.class)))
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
-
-            // When
-            pb.review.ReviewCommon.ApiResponseReview response = handler.create(request)
-                    .await().indefinitely();
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getMessage()).isEqualTo("Review created successfully!");
-            assertThat(response.getData()).isNotNull();
-            assertThat(response.getData().getId()).isEqualTo(1);
-            assertThat(response.getData().getUserId()).isEqualTo(1);
-            assertThat(response.getData().getProductId()).isEqualTo(100);
+        @BeforeEach
+        void setUp() throws Exception {
+                handler = new ReviewCommandGrpcHandler();
+                java.lang.reflect.Field field = ReviewCommandGrpcHandler.class.getDeclaredField("reviewCommandService");
+                field.setAccessible(true);
+                field.set(handler, reviewCommandService);
         }
 
-        @Test
-        @DisplayName("Should handle failure when creating review via gRPC handler")
-        void shouldHandleFailureWhenCreatingReview() {
-            // Given
-            pb.review.ReviewCommand.CreateReviewRequest request = pb.review.ReviewCommand.CreateReviewRequest.newBuilder()
-                    .setUserId(1)
-                    .setProductId(100)
-                    .setName("John Doe")
-                    .setRating(5)
-                    .setComment("Great product!")
-                    .build();
+        @Nested
+        @DisplayName("Create Review Handler Tests")
+        class CreateReviewHandlerTests {
 
-            RuntimeException exception = new RuntimeException("Database error");
-            when(reviewCommandService.create(any(CreateReviewRequest.class)))
-                    .thenReturn(Uni.createFrom().failure(exception));
+                @Test
+                @DisplayName("Should create review successfully via gRPC handler")
+                void shouldCreateReviewSuccessfully() {
 
-            // When & Then
-            try {
-                handler.create(request).await().indefinitely();
-                assertThat(false).isTrue();
-            } catch (StatusRuntimeException e) {
-                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.INTERNAL);
-            }
-        }
-    }
+                        pb.review.ReviewCommand.CreateReviewRequest request = pb.review.ReviewCommand.CreateReviewRequest
+                                        .newBuilder()
+                                        .setUserId(1)
+                                        .setProductId(100)
+                                        .setName("John Doe")
+                                        .setRating(5)
+                                        .setComment("Great product!")
+                                        .build();
 
-    @Nested
-    @DisplayName("Update Review Handler Tests")
-    class UpdateReviewHandlerTests {
+                        ReviewResponse responseData = ReviewResponse.builder()
+                                        .id(1)
+                                        .userId(1)
+                                        .productId(100)
+                                        .name("John Doe")
+                                        .rating(5)
+                                        .comment("Great product!")
+                                        .build();
 
-        @Test
-        @DisplayName("Should update review successfully via gRPC handler")
-        void shouldUpdateReviewSuccessfully() {
-            // Given
-            pb.review.ReviewCommand.UpdateReviewRequest request = pb.review.ReviewCommand.UpdateReviewRequest.newBuilder()
-                    .setReviewId(1)
-                    .setName("Jane Doe")
-                    .setRating(4)
-                    .setComment("Updated comment")
-                    .build();
+                        ApiResponse<ReviewResponse> serviceResponse = ApiResponse
+                                        .success("Review created successfully!", responseData);
 
-            ReviewResponse responseData = ReviewResponse.builder()
-                    .id(1)
-                    .userId(1)
-                    .productId(100)
-                    .name("Jane Doe")
-                    .rating(4)
-                    .comment("Updated comment")
-                    .build();
+                        when(reviewCommandService.create(any(CreateReviewRequest.class)))
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            ApiResponse<ReviewResponse> serviceResponse = ApiResponse.success("Review updated successfully!", responseData);
+                        pb.review.ReviewCommon.ApiResponseReview response = handler.create(request)
+                                        .await().indefinitely();
 
-            when(reviewCommandService.update(any(UpdateReviewRequest.class)))
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getMessage()).isEqualTo("Review created successfully!");
+                        assertThat(response.getData()).isNotNull();
+                        assertThat(response.getData().getId()).isEqualTo(1);
+                        assertThat(response.getData().getUserId()).isEqualTo(1);
+                        assertThat(response.getData().getProductId()).isEqualTo(100);
+                }
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReview response = handler.update(request)
-                    .await().indefinitely();
+                @Test
+                @DisplayName("Should handle failure when creating review via gRPC handler")
+                void shouldHandleFailureWhenCreatingReview() {
 
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getData().getName()).isEqualTo("Jane Doe");
-            assertThat(response.getData().getRating()).isEqualTo(4);
-        }
+                        pb.review.ReviewCommand.CreateReviewRequest request = pb.review.ReviewCommand.CreateReviewRequest
+                                        .newBuilder()
+                                        .setUserId(1)
+                                        .setProductId(100)
+                                        .setName("John Doe")
+                                        .setRating(5)
+                                        .setComment("Great product!")
+                                        .build();
 
-        @Test
-        @DisplayName("Should return NOT_FOUND when review not found")
-        void shouldReturnNotFoundWhenReviewNotFound() {
-            // Given
-            pb.review.ReviewCommand.UpdateReviewRequest request = pb.review.ReviewCommand.UpdateReviewRequest.newBuilder()
-                    .setReviewId(999)
-                    .setName("Jane Doe")
-                    .setRating(4)
-                    .setComment("Updated comment")
-                    .build();
+                        RuntimeException exception = new RuntimeException("Database error");
+                        when(reviewCommandService.create(any(CreateReviewRequest.class)))
+                                        .thenReturn(Uni.createFrom().failure(exception));
 
-            ResourceNotFoundException exception = new ResourceNotFoundException("Review not found");
-            when(reviewCommandService.update(any(UpdateReviewRequest.class)))
-                    .thenReturn(Uni.createFrom().failure(exception));
-
-            // When & Then
-            try {
-                handler.update(request).await().indefinitely();
-                assertThat(false).isTrue();
-            } catch (StatusRuntimeException e) {
-                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
-            }
-        }
-    }
-
-    @Nested
-    @DisplayName("Trash Review Handler Tests")
-    class TrashReviewHandlerTests {
-
-        @Test
-        @DisplayName("Should trash review successfully via gRPC handler")
-        void shouldTrashReviewSuccessfully() {
-            // Given
-            FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
-                    .setId(1)
-                    .build();
-
-            ReviewResponseDeleteAt responseData = ReviewResponseDeleteAt.builder()
-                    .id(1)
-                    .userId(1)
-                    .productId(100)
-                    .name("John Doe")
-                    .rating(5)
-                    .comment("Great product!")
-                    .deletedAt("2024-01-01 00:00:00")
-                    .build();
-
-            ApiResponse<ReviewResponseDeleteAt> serviceResponse = ApiResponse.success("Review trashed successfully!", responseData);
-
-            when(reviewCommandService.trash(1))
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
-
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewDeleteAt response = handler.trashedReview(request)
-                    .await().indefinitely();
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getData()).isNotNull();
-            assertThat(response.getData().getId()).isEqualTo(1);
+                        try {
+                                handler.create(request).await().indefinitely();
+                                assertThat(false).isTrue();
+                        } catch (StatusRuntimeException e) {
+                                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.INTERNAL);
+                        }
+                }
         }
 
-        @Test
-        @DisplayName("Should return NOT_FOUND when trashing non-existent review")
-        void shouldReturnNotFoundWhenTrashingNonExistentReview() {
-            // Given
-            FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
-                    .setId(999)
-                    .build();
+        @Nested
+        @DisplayName("Update Review Handler Tests")
+        class UpdateReviewHandlerTests {
 
-            ResourceNotFoundException exception = new ResourceNotFoundException("Review not found");
-            when(reviewCommandService.trash(999))
-                    .thenReturn(Uni.createFrom().failure(exception));
+                @Test
+                @DisplayName("Should update review successfully via gRPC handler")
+                void shouldUpdateReviewSuccessfully() {
 
-            // When & Then
-            try {
-                handler.trashedReview(request).await().indefinitely();
-                assertThat(false).isTrue();
-            } catch (StatusRuntimeException e) {
-                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
-            }
-        }
-    }
+                        pb.review.ReviewCommand.UpdateReviewRequest request = pb.review.ReviewCommand.UpdateReviewRequest
+                                        .newBuilder()
+                                        .setReviewId(1)
+                                        .setName("Jane Doe")
+                                        .setRating(4)
+                                        .setComment("Updated comment")
+                                        .build();
 
-    @Nested
-    @DisplayName("Restore Review Handler Tests")
-    class RestoreReviewHandlerTests {
+                        ReviewResponse responseData = ReviewResponse.builder()
+                                        .id(1)
+                                        .userId(1)
+                                        .productId(100)
+                                        .name("Jane Doe")
+                                        .rating(4)
+                                        .comment("Updated comment")
+                                        .build();
 
-        @Test
-        @DisplayName("Should restore review successfully via gRPC handler")
-        void shouldRestoreReviewSuccessfully() {
-            // Given
-            FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
-                    .setId(1)
-                    .build();
+                        ApiResponse<ReviewResponse> serviceResponse = ApiResponse
+                                        .success("Review updated successfully!", responseData);
 
-            ReviewResponseDeleteAt responseData = ReviewResponseDeleteAt.builder()
-                    .id(1)
-                    .userId(1)
-                    .productId(100)
-                    .name("John Doe")
-                    .rating(5)
-                    .comment("Great product!")
-                    .build();
+                        when(reviewCommandService.update(any(UpdateReviewRequest.class)))
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
 
-            ApiResponse<ReviewResponseDeleteAt> serviceResponse = ApiResponse.success("Review restored successfully!", responseData);
+                        pb.review.ReviewCommon.ApiResponseReview response = handler.update(request)
+                                        .await().indefinitely();
 
-            when(reviewCommandService.restore(1))
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getData().getName()).isEqualTo("Jane Doe");
+                        assertThat(response.getData().getRating()).isEqualTo(4);
+                }
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewDeleteAt response = handler.restoreReview(request)
-                    .await().indefinitely();
+                @Test
+                @DisplayName("Should return NOT_FOUND when review not found")
+                void shouldReturnNotFoundWhenReviewNotFound() {
 
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getData()).isNotNull();
-        }
-    }
+                        pb.review.ReviewCommand.UpdateReviewRequest request = pb.review.ReviewCommand.UpdateReviewRequest
+                                        .newBuilder()
+                                        .setReviewId(999)
+                                        .setName("Jane Doe")
+                                        .setRating(4)
+                                        .setComment("Updated comment")
+                                        .build();
 
-    @Nested
-    @DisplayName("Delete Review Handler Tests")
-    class DeleteReviewHandlerTests {
+                        ResourceNotFoundException exception = new ResourceNotFoundException("Review not found");
+                        when(reviewCommandService.update(any(UpdateReviewRequest.class)))
+                                        .thenReturn(Uni.createFrom().failure(exception));
 
-        @Test
-        @DisplayName("Should delete review permanently via gRPC handler")
-        void shouldDeleteReviewPermanently() {
-            // Given
-            FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
-                    .setId(1)
-                    .build();
-
-            ApiResponse<Void> serviceResponse = ApiResponse.success("Review permanently deleted!");
-
-            when(reviewCommandService.delete(1))
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
-
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewDelete response = handler.deleteReviewPermanent(request)
-                    .await().indefinitely();
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getMessage()).isEqualTo("Review permanently deleted!");
-        }
-    }
-
-    @Nested
-    @DisplayName("Restore All & Delete All Handler Tests")
-    class RestoreAllDeleteAllHandlerTests {
-
-        @Test
-        @DisplayName("Should restore all reviews via gRPC handler")
-        void shouldRestoreAllReviews() {
-            // Given
-            com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
-
-            ApiResponse<Void> serviceResponse = ApiResponse.success("All reviews restored successfully!");
-
-            when(reviewCommandService.restoreAll())
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
-
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewAll response = handler.restoreAllReview(request)
-                    .await().indefinitely();
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getMessage()).isEqualTo("All reviews restored successfully!");
+                        try {
+                                handler.update(request).await().indefinitely();
+                                assertThat(false).isTrue();
+                        } catch (StatusRuntimeException e) {
+                                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
+                        }
+                }
         }
 
-        @Test
-        @DisplayName("Should delete all reviews permanently via gRPC handler")
-        void shouldDeleteAllReviewsPermanently() {
-            // Given
-            com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
+        @Nested
+        @DisplayName("Trash Review Handler Tests")
+        class TrashReviewHandlerTests {
 
-            ApiResponse<Void> serviceResponse = ApiResponse.success("All reviews permanently deleted!");
+                @Test
+                @DisplayName("Should trash review successfully via gRPC handler")
+                void shouldTrashReviewSuccessfully() {
 
-            when(reviewCommandService.deleteAll())
-                    .thenReturn(Uni.createFrom().item(serviceResponse));
+                        FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
+                                        .setId(1)
+                                        .build();
 
-            // When
-            pb.review.ReviewCommon.ApiResponseReviewAll response = handler.deleteAllReviewPermanent(request)
-                    .await().indefinitely();
+                        ReviewResponseDeleteAt responseData = ReviewResponseDeleteAt.builder()
+                                        .id(1)
+                                        .userId(1)
+                                        .productId(100)
+                                        .name("John Doe")
+                                        .rating(5)
+                                        .comment("Great product!")
+                                        .deletedAt("2024-01-01 00:00:00")
+                                        .build();
 
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo("success");
-            assertThat(response.getMessage()).isEqualTo("All reviews permanently deleted!");
+                        ApiResponse<ReviewResponseDeleteAt> serviceResponse = ApiResponse
+                                        .success("Review trashed successfully!", responseData);
+
+                        when(reviewCommandService.trash(1))
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
+
+                        pb.review.ReviewCommon.ApiResponseReviewDeleteAt response = handler.trashedReview(request)
+                                        .await().indefinitely();
+
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getData()).isNotNull();
+                        assertThat(response.getData().getId()).isEqualTo(1);
+                }
+
+                @Test
+                @DisplayName("Should return NOT_FOUND when trashing non-existent review")
+                void shouldReturnNotFoundWhenTrashingNonExistentReview() {
+
+                        FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
+                                        .setId(999)
+                                        .build();
+
+                        ResourceNotFoundException exception = new ResourceNotFoundException("Review not found");
+                        when(reviewCommandService.trash(999))
+                                        .thenReturn(Uni.createFrom().failure(exception));
+
+                        try {
+                                handler.trashedReview(request).await().indefinitely();
+                                assertThat(false).isTrue();
+                        } catch (StatusRuntimeException e) {
+                                assertThat(e.getStatus().getCode()).isEqualTo(Status.Code.NOT_FOUND);
+                        }
+                }
         }
-    }
+
+        @Nested
+        @DisplayName("Restore Review Handler Tests")
+        class RestoreReviewHandlerTests {
+
+                @Test
+                @DisplayName("Should restore review successfully via gRPC handler")
+                void shouldRestoreReviewSuccessfully() {
+
+                        FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
+                                        .setId(1)
+                                        .build();
+
+                        ReviewResponseDeleteAt responseData = ReviewResponseDeleteAt.builder()
+                                        .id(1)
+                                        .userId(1)
+                                        .productId(100)
+                                        .name("John Doe")
+                                        .rating(5)
+                                        .comment("Great product!")
+                                        .build();
+
+                        ApiResponse<ReviewResponseDeleteAt> serviceResponse = ApiResponse
+                                        .success("Review restored successfully!", responseData);
+
+                        when(reviewCommandService.restore(1))
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
+
+                        pb.review.ReviewCommon.ApiResponseReviewDeleteAt response = handler.restoreReview(request)
+                                        .await().indefinitely();
+
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getData()).isNotNull();
+                }
+        }
+
+        @Nested
+        @DisplayName("Delete Review Handler Tests")
+        class DeleteReviewHandlerTests {
+
+                @Test
+                @DisplayName("Should delete review permanently via gRPC handler")
+                void shouldDeleteReviewPermanently() {
+
+                        FindByIdReviewRequest request = FindByIdReviewRequest.newBuilder()
+                                        .setId(1)
+                                        .build();
+
+                        ApiResponse<Void> serviceResponse = ApiResponse.success("Review permanently deleted!");
+
+                        when(reviewCommandService.delete(1))
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
+
+                        pb.review.ReviewCommon.ApiResponseReviewDelete response = handler.deleteReviewPermanent(request)
+                                        .await().indefinitely();
+
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getMessage()).isEqualTo("Review permanently deleted!");
+                }
+        }
+
+        @Nested
+        @DisplayName("Restore All & Delete All Handler Tests")
+        class RestoreAllDeleteAllHandlerTests {
+
+                @Test
+                @DisplayName("Should restore all reviews via gRPC handler")
+                void shouldRestoreAllReviews() {
+
+                        com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
+
+                        ApiResponse<Void> serviceResponse = ApiResponse.success("All reviews restored successfully!");
+
+                        when(reviewCommandService.restoreAll())
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
+
+                        pb.review.ReviewCommon.ApiResponseReviewAll response = handler.restoreAllReview(request)
+                                        .await().indefinitely();
+
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getMessage()).isEqualTo("All reviews restored successfully!");
+                }
+
+                @Test
+                @DisplayName("Should delete all reviews permanently via gRPC handler")
+                void shouldDeleteAllReviewsPermanently() {
+
+                        com.google.protobuf.Empty request = com.google.protobuf.Empty.getDefaultInstance();
+
+                        ApiResponse<Void> serviceResponse = ApiResponse.success("All reviews permanently deleted!");
+
+                        when(reviewCommandService.deleteAll())
+                                        .thenReturn(Uni.createFrom().item(serviceResponse));
+
+                        pb.review.ReviewCommon.ApiResponseReviewAll response = handler.deleteAllReviewPermanent(request)
+                                        .await().indefinitely();
+
+                        assertThat(response).isNotNull();
+                        assertThat(response.getStatus()).isEqualTo("success");
+                        assertThat(response.getMessage()).isEqualTo("All reviews permanently deleted!");
+                }
+        }
 }

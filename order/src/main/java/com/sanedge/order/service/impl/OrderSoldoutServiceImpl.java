@@ -11,21 +11,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
+import com.sanedge.common.observability.TracingMetrics;
 import com.sanedge.order.domain.response.OrderMonthlyResponse;
 import com.sanedge.order.domain.response.OrderYearlyResponse;
 import com.sanedge.order.repository.stats.OrderSoldOutRepository;
 import com.sanedge.order.service.OrderSoldoutService;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -34,36 +26,22 @@ import jakarta.inject.Inject;
 public class OrderSoldoutServiceImpl implements OrderSoldoutService {
     private static final Logger logger = LoggerFactory.getLogger(OrderSoldoutServiceImpl.class);
 
-    OrderSoldOutRepository orderSoldOutRepository;
-    OpenTelemetry openTelemetry;
-    RedisService redisService;
-    ObjectMapper objectMapper;
-
-    private final Tracer tracer;
-    private final LongCounter requestsTotal;
-    private final DoubleHistogram requestDurationSeconds;
+    private final OrderSoldOutRepository orderSoldOutRepository;
+    private final RedisService redisService;
+    private final ObjectMapper objectMapper;
+    private final TracingMetrics tracingMetrics;
 
     private static final long STATS_CACHE_TTL_SECONDS = 600;
 
     @Inject
     public OrderSoldoutServiceImpl(OrderSoldOutRepository orderSoldOutRepository,
-                                  OpenTelemetry openTelemetry,
-                                  RedisService redisService,
-                                  ObjectMapper objectMapper) {
+            RedisService redisService,
+            ObjectMapper objectMapper,
+            TracingMetrics tracingMetrics) {
         this.orderSoldOutRepository = orderSoldOutRepository;
-        this.openTelemetry = openTelemetry;
         this.redisService = redisService;
         this.objectMapper = objectMapper;
-        this.tracer = openTelemetry.getTracer("order-soldout-service", "1.0.0");
-        Meter meter = openTelemetry.getMeter("order-soldout-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
+        this.tracingMetrics = tracingMetrics;
     }
 
     private String toJson(Object obj) {
@@ -100,56 +78,38 @@ public class OrderSoldoutServiceImpl implements OrderSoldoutService {
                     if (cachedJson != null) {
                         logger.info("Cache HIT for key: {}", cacheKey);
                         ApiResponse<List<OrderMonthlyResponse>> response = fromJson(cachedJson,
-                                new TypeReference<ApiResponse<List<OrderMonthlyResponse>>>() {});
+                                new TypeReference<ApiResponse<List<OrderMonthlyResponse>>>() {
+                                });
                         return Uni.createFrom().item(response);
                     }
 
                     logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findMonthlyOrders")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "order-soldout-service")
-                            .setAttribute("operation", "find_monthly_orders")
-                            .setAttribute("year", year.toString())
-                            .setAttribute("month", month.toString())
-                            .startSpan();
 
-                    return orderSoldOutRepository.findMonthlyOrders(year, month)
-                            .chain(rawData -> {
-                                List<OrderMonthlyResponse> responseList = rawData.stream()
-                                        .map(OrderMonthlyResponse::from)
-                                        .collect(Collectors.toList());
+                    return tracingMetrics.traceAndMeasure("findMonthlyOrders", "find_monthly_orders",
+                            Attributes.builder()
+                                    .put("year", year.toString())
+                                    .put("month", month.toString())
+                                    .build(),
+                            () -> orderSoldOutRepository.findMonthlyOrders(year, month)
+                                    .chain(rawData -> {
+                                        List<OrderMonthlyResponse> responseList = rawData.stream()
+                                                .map(OrderMonthlyResponse::from)
+                                                .collect(Collectors.toList());
 
-                                ApiResponse<List<OrderMonthlyResponse>> response = ApiResponse.success(
-                                        "Monthly order data retrieved successfully", responseList);
+                                        ApiResponse<List<OrderMonthlyResponse>> response = ApiResponse.success(
+                                                "Monthly order data retrieved successfully", responseList);
 
-                                return redisService.setWithExpirationReactive(cacheKey, toJson(response), STATS_CACHE_TTL_SECONDS)
-                                        .map(v -> {
-                                            logger.info("Cached monthly stats for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_monthly_orders",
-                                                    AttributeKey.stringKey("status"), "success"));
-                                            return response;
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error fetching monthly orders for year={}, month={}", year, month, e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_monthly_orders",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_monthly_orders"));
-                            });
+                                        return redisService
+                                                .setWithExpirationReactive(cacheKey, toJson(response),
+                                                        STATS_CACHE_TTL_SECONDS)
+                                                .map(v -> {
+                                                    logger.info("Cached monthly stats for key: {}", cacheKey);
+                                                    return response;
+                                                });
+                                    })
+                                    .onFailure()
+                                    .invoke(e -> logger.error("Error fetching monthly orders for year={}, month={}",
+                                            year, month, e)));
                 });
     }
 
@@ -166,55 +126,34 @@ public class OrderSoldoutServiceImpl implements OrderSoldoutService {
                     if (cachedJson != null) {
                         logger.info("Cache HIT for key: {}", cacheKey);
                         ApiResponse<List<OrderYearlyResponse>> response = fromJson(cachedJson,
-                                new TypeReference<ApiResponse<List<OrderYearlyResponse>>>() {});
+                                new TypeReference<ApiResponse<List<OrderYearlyResponse>>>() {
+                                });
                         return Uni.createFrom().item(response);
                     }
 
                     logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                    long startTime = System.currentTimeMillis();
-                    Span span = tracer.spanBuilder("findYearlyOrders")
-                            .setSpanKind(SpanKind.SERVER)
-                            .setAttribute("service.name", "order-soldout-service")
-                            .setAttribute("operation", "find_yearly_orders")
-                            .setAttribute("year", year.toString())
-                            .startSpan();
 
-                    return orderSoldOutRepository.findYearlyOrders(year)
-                            .chain(rawData -> {
-                                List<OrderYearlyResponse> responseList = rawData.stream()
-                                        .map(OrderYearlyResponse::from)
-                                        .collect(Collectors.toList());
+                    return tracingMetrics.traceAndMeasure("findYearlyOrders", "find_yearly_orders",
+                            Attributes.builder().put("year", year.toString()).build(),
+                            () -> orderSoldOutRepository.findYearlyOrders(year)
+                                    .chain(rawData -> {
+                                        List<OrderYearlyResponse> responseList = rawData.stream()
+                                                .map(OrderYearlyResponse::from)
+                                                .collect(Collectors.toList());
 
-                                ApiResponse<List<OrderYearlyResponse>> response = ApiResponse.success(
-                                        "Yearly order data retrieved successfully", responseList);
+                                        ApiResponse<List<OrderYearlyResponse>> response = ApiResponse.success(
+                                                "Yearly order data retrieved successfully", responseList);
 
-                                return redisService.setWithExpirationReactive(cacheKey, toJson(response), STATS_CACHE_TTL_SECONDS)
-                                        .map(v -> {
-                                            logger.info("Cached yearly stats for key: {}", cacheKey);
-                                            span.setStatus(StatusCode.OK);
-
-                                            requestsTotal.add(1, Attributes.of(
-                                                    AttributeKey.stringKey("operation"), "find_yearly_orders",
-                                                    AttributeKey.stringKey("status"), "success"));
-                                            return response;
-                                        });
-                            })
-                            .onFailure().invoke(e -> {
-                                logger.error("Error fetching yearly orders for year={}", year, e);
-                                span.recordException(e);
-                                span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_yearly_orders",
-                                        AttributeKey.stringKey("status"), "failed",
-                                        AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                            })
-                            .eventually(() -> {
-                                span.end();
-                                double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                requestDurationSeconds.record(duration, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "find_yearly_orders"));
-                            });
+                                        return redisService
+                                                .setWithExpirationReactive(cacheKey, toJson(response),
+                                                        STATS_CACHE_TTL_SECONDS)
+                                                .map(v -> {
+                                                    logger.info("Cached yearly stats for key: {}", cacheKey);
+                                                    return response;
+                                                });
+                                    })
+                                    .onFailure()
+                                    .invoke(e -> logger.error("Error fetching yearly orders for year={}", year, e)));
                 });
     }
 }

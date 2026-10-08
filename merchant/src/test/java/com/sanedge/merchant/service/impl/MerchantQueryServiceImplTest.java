@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,16 +63,11 @@ class MerchantQueryServiceImplTest {
                 redisService,
                 objectMapper,
                 tracingMetrics);
-
-        when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    Object result = supplier.get();
-                    if (result instanceof Uni) {
-                        return (Uni<?>) result;
-                    }
-                    return Uni.createFrom().item(result);
-                });
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
     }
 
     private Merchant createMockMerchant(Long id, Integer userId, String name, Status status) {
@@ -95,8 +92,6 @@ class MerchantQueryServiceImplTest {
             throw new RuntimeException("Failed to serialize in test helper", e);
         }
     }
-
-    // ========== findAll Tests ==========
 
     @Test
     void findAll_cacheMiss_fetchesFromDbAndCachesResult() {
@@ -129,8 +124,6 @@ class MerchantQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
 
-    // ========== findByActive Tests ==========
-
     @Test
     void findByActive_cacheMiss_fetchesFromDbAndCachesResult() {
         FindAllMerchants req = new FindAllMerchants();
@@ -159,8 +152,6 @@ class MerchantQueryServiceImplTest {
         verify(merchantQueryRepository).findActiveMerchants(req);
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
-
-    // ========== findByTrashed Tests ==========
 
     @Test
     void findByTrashed_cacheMiss_fetchesFromDbAndCachesResult() {
@@ -192,8 +183,6 @@ class MerchantQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(anyString(), anyString(), eq(300L));
     }
 
-    // ========== findById Tests ==========
-
     @Test
     void findById_cacheMiss_fetchesFromDbAndSavesToCache() {
         Merchant merchant = createMockMerchant(1L, 1, "TestMerchant", Status.PENDING);
@@ -223,8 +212,6 @@ class MerchantQueryServiceImplTest {
 
         verify(redisService, never()).setReactive(anyString(), anyString());
     }
-
-    // ========== findByUserId Tests ==========
 
     @Test
     void findByUserId_success() {
@@ -267,5 +254,24 @@ class MerchantQueryServiceImplTest {
 
         verify(merchantQueryRepository).findByUserId(99);
         verify(redisService).setReactive(anyString(), anyString());
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

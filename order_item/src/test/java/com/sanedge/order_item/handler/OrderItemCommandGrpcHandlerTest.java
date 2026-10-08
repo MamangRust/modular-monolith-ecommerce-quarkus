@@ -24,7 +24,6 @@ import com.sanedge.order_item.service.OrderItemCommandService;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
-import pb.order_item.MutinyOrderItemCommandServiceGrpc;
 import pb.order_item.OrderItemCommand;
 import pb.order_item.OrderItemCommon;
 
@@ -44,12 +43,11 @@ class OrderItemCommandGrpcHandlerTest {
         f.set(handler, orderItemCommandService);
     }
 
-    // ========== CREATE ORDER ITEM HANDLER TESTS ==========
-
     @Test
     @DisplayName("createOrderItem - should return success response when order item created successfully")
     void createOrderItem_Success() {
-        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderId(1)
                 .setProductId(100)
                 .setQuantity(2)
@@ -66,7 +64,8 @@ class OrderItemCommandGrpcHandlerTest {
                 .updatedAt("2024-01-01")
                 .build();
 
-        ApiResponse<OrderItemResponse> apiResponse = ApiResponse.success("Order item created successfully", mockResponse);
+        ApiResponse<OrderItemResponse> apiResponse = ApiResponse.success("Order item created successfully",
+                mockResponse);
 
         when(orderItemCommandService.create(any(CreateOrderItemRequest.class)))
                 .thenReturn(Uni.createFrom().item(apiResponse));
@@ -87,7 +86,8 @@ class OrderItemCommandGrpcHandlerTest {
     @Test
     @DisplayName("createOrderItem - should return NOT_FOUND when ResourceNotFoundException thrown")
     void createOrderItem_ResourceNotFound() {
-        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderId(1)
                 .setProductId(100)
                 .setQuantity(2)
@@ -112,7 +112,8 @@ class OrderItemCommandGrpcHandlerTest {
     @Test
     @DisplayName("createOrderItem - should return INTERNAL when generic exception thrown")
     void createOrderItem_InternalError() {
-        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderId(1)
                 .setProductId(100)
                 .setQuantity(2)
@@ -133,12 +134,11 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== UPDATE ORDER ITEM HANDLER TESTS ==========
-
     @Test
     @DisplayName("updateOrderItem - should return success response when order item updated successfully")
     void updateOrderItem_Success() {
-        OrderItemCommand.UpdateOrderItemRecordRequest request = OrderItemCommand.UpdateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.UpdateOrderItemRecordRequest request = OrderItemCommand.UpdateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderItemId(1)
                 .setQuantity(5)
                 .setPrice(7500)
@@ -154,7 +154,8 @@ class OrderItemCommandGrpcHandlerTest {
                 .updatedAt("2024-01-02")
                 .build();
 
-        ApiResponse<OrderItemResponse> apiResponse = ApiResponse.success("Order item updated successfully", mockResponse);
+        ApiResponse<OrderItemResponse> apiResponse = ApiResponse.success("Order item updated successfully",
+                mockResponse);
 
         when(orderItemCommandService.update(any(UpdateOrderItemRequest.class)))
                 .thenReturn(Uni.createFrom().item(apiResponse));
@@ -172,7 +173,8 @@ class OrderItemCommandGrpcHandlerTest {
     @Test
     @DisplayName("updateOrderItem - should return NOT_FOUND when order item not found")
     void updateOrderItem_ResourceNotFound() {
-        OrderItemCommand.UpdateOrderItemRecordRequest request = OrderItemCommand.UpdateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.UpdateOrderItemRecordRequest request = OrderItemCommand.UpdateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderItemId(999)
                 .setQuantity(5)
                 .setPrice(7500)
@@ -193,8 +195,6 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== TRASH ORDER ITEM HANDLER TESTS ==========
-
     @Test
     @DisplayName("trashOrderItem - should return success response when order item trashed successfully")
     void trashOrderItem_Success() {
@@ -211,7 +211,8 @@ class OrderItemCommandGrpcHandlerTest {
                 .deletedAt("2024-01-02T10:00:00")
                 .build();
 
-        ApiResponse<OrderItemResponseDeleteAt> apiResponse = ApiResponse.success("Order item trashed successfully", mockResponse);
+        ApiResponse<OrderItemResponseDeleteAt> apiResponse = ApiResponse.success("Order item trashed successfully",
+                mockResponse);
 
         when(orderItemCommandService.trash(1L)).thenReturn(Uni.createFrom().item(apiResponse));
 
@@ -246,8 +247,6 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== RESTORE ORDER ITEM HANDLER TESTS ==========
-
     @Test
     @DisplayName("restoreOrderItem - should return success response when order item restored successfully")
     void restoreOrderItem_Success() {
@@ -263,7 +262,8 @@ class OrderItemCommandGrpcHandlerTest {
                 .price(5000)
                 .build();
 
-        ApiResponse<OrderItemResponseDeleteAt> apiResponse = ApiResponse.success("Order item restored successfully", mockResponse);
+        ApiResponse<OrderItemResponseDeleteAt> apiResponse = ApiResponse.success("Order item restored successfully",
+                mockResponse);
 
         when(orderItemCommandService.restore(1L)).thenReturn(Uni.createFrom().item(apiResponse));
 
@@ -296,8 +296,6 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== DELETE ORDER ITEM PERMANENT HANDLER TESTS ==========
-
     @Test
     @DisplayName("deleteOrderItemPermanent - should return success when order item deleted permanently")
     void deleteOrderItemPermanent_Success() {
@@ -309,7 +307,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.deletePermanent(1L)).thenReturn(Uni.createFrom().item(apiResponse));
 
-        OrderItemCommon.ApiResponseOrderItemDelete response = handler.deleteOrderItemPermanent(request).await().indefinitely();
+        OrderItemCommon.ApiResponseOrderItemDelete response = handler.deleteOrderItemPermanent(request).await()
+                .indefinitely();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
@@ -317,7 +316,7 @@ class OrderItemCommandGrpcHandlerTest {
     }
 
     @Test
-    @DisplayName("deleteOrderItemPermanent - should return INTERNAL when order item not found or not trashed")
+    @DisplayName("deleteOrderItemPermanent - should return INVALID_ARGUMENT when order item not found or not trashed")
     void deleteOrderItemPermanent_NotFound() {
         OrderItemCommon.FindByIdOrderItemRequest request = OrderItemCommon.FindByIdOrderItemRequest.newBuilder()
                 .setId(999)
@@ -325,7 +324,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.deletePermanent(999L))
                 .thenReturn(Uni.createFrom().failure(
-                        new com.sanedge.common.exception.InvalidRequestException("Order item not found or must be trashed before permanent deletion")));
+                        new com.sanedge.common.exception.InvalidRequestException(
+                                "Order item not found or must be trashed before permanent deletion")));
 
         StatusRuntimeException exception = null;
         try {
@@ -335,10 +335,8 @@ class OrderItemCommandGrpcHandlerTest {
         }
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
+        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
     }
-
-    // ========== RESTORE ALL ORDER ITEMS HANDLER TESTS ==========
 
     @Test
     @DisplayName("restoreAllOrdersItem - should return success when all order items restored")
@@ -357,7 +355,7 @@ class OrderItemCommandGrpcHandlerTest {
     }
 
     @Test
-    @DisplayName("restoreAllOrdersItem - should return INTERNAL error when no trashed order items found")
+    @DisplayName("restoreAllOrdersItem - should return NOT_FOUND when no trashed order items found")
     void restoreAllOrdersItem_NotFound() {
         Empty request = Empty.getDefaultInstance();
 
@@ -373,10 +371,8 @@ class OrderItemCommandGrpcHandlerTest {
         }
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
+        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== DELETE ALL ORDER ITEMS PERMANENT HANDLER TESTS ==========
 
     @Test
     @DisplayName("deleteAllPermanentOrdersItem - should return success when all order items deleted")
@@ -387,7 +383,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.deleteAll()).thenReturn(Uni.createFrom().item(apiResponse));
 
-        OrderItemCommon.ApiResponseOrderItemAll response = handler.deleteAllPermanentOrdersItem(request).await().indefinitely();
+        OrderItemCommon.ApiResponseOrderItemAll response = handler.deleteAllPermanentOrdersItem(request).await()
+                .indefinitely();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
@@ -395,7 +392,7 @@ class OrderItemCommandGrpcHandlerTest {
     }
 
     @Test
-    @DisplayName("deleteAllPermanentOrdersItem - should return INTERNAL error when no trashed order items found")
+    @DisplayName("deleteAllPermanentOrdersItem - should return NOT_FOUND when no trashed order items found")
     void deleteAllPermanentOrdersItem_NotFound() {
         Empty request = Empty.getDefaultInstance();
 
@@ -411,10 +408,8 @@ class OrderItemCommandGrpcHandlerTest {
         }
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
+        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== DELETE ORDER ITEMS BY ORDER PERMANENT HANDLER TESTS ==========
 
     @Test
     @DisplayName("deleteOrderItemByOrderPermanent - should return success when order items deleted")
@@ -427,7 +422,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.deleteByOrderPermanent(1L)).thenReturn(Uni.createFrom().item(apiResponse));
 
-        OrderItemCommon.ApiResponseOrderItemDelete response = handler.deleteOrderItemByOrderPermanent(request).await().indefinitely();
+        OrderItemCommon.ApiResponseOrderItemDelete response = handler.deleteOrderItemByOrderPermanent(request).await()
+                .indefinitely();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
@@ -443,7 +439,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.deleteByOrderPermanent(999L))
                 .thenReturn(Uni.createFrom().failure(
-                        new com.sanedge.common.exception.ResourceNotFoundException("No order items found for order id: 999")));
+                        new com.sanedge.common.exception.ResourceNotFoundException(
+                                "No order items found for order id: 999")));
 
         StatusRuntimeException exception = null;
         try {
@@ -456,8 +453,6 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== CALCULATE TOTAL PRICE HANDLER TESTS ==========
-
     @Test
     @DisplayName("calculateTotalPrice - should return success with total price")
     void calculateTotalPrice_Success() {
@@ -469,7 +464,8 @@ class OrderItemCommandGrpcHandlerTest {
 
         when(orderItemCommandService.calculateTotalPrice(1L)).thenReturn(Uni.createFrom().item(apiResponse));
 
-        OrderItemCommand.CalculateTotalPriceResponse response = handler.calculateTotalPrice(request).await().indefinitely();
+        OrderItemCommand.CalculateTotalPriceResponse response = handler.calculateTotalPrice(request).await()
+                .indefinitely();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
@@ -498,12 +494,11 @@ class OrderItemCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== REQUEST MAPPING TESTS ==========
-
     @Test
     @DisplayName("createOrderItem - should correctly map request fields to domain object")
     void createOrderItem_RequestMapping() {
-        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest.newBuilder()
+        OrderItemCommand.CreateOrderItemRecordRequest request = OrderItemCommand.CreateOrderItemRecordRequest
+                .newBuilder()
                 .setOrderId(5)
                 .setProductId(200)
                 .setQuantity(3)
@@ -523,7 +518,7 @@ class OrderItemCommandGrpcHandlerTest {
         when(orderItemCommandService.create(any(CreateOrderItemRequest.class)))
                 .thenAnswer(invocation -> {
                     CreateOrderItemRequest domainReq = invocation.getArgument(0);
-                    // Verify mapping
+
                     assertThat(domainReq.getOrderId()).isEqualTo(5);
                     assertThat(domainReq.getProductId()).isEqualTo(200);
                     assertThat(domainReq.getQuantity()).isEqualTo(3);

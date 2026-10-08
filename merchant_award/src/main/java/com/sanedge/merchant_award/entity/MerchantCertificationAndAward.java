@@ -1,5 +1,7 @@
 package com.sanedge.merchant_award.entity;
 
+import com.sanedge.common.entity.BaseModel;
+
 import java.sql.Date;
 
 import com.sanedge.merchant_award.domain.requests.CreateMerchantAwardRequest;
@@ -7,6 +9,9 @@ import com.sanedge.merchant_award.domain.requests.UpdateMerchantAwardRequest;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -20,6 +25,10 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "merchant_certifications_and_awards")
 public class MerchantCertificationAndAward extends BaseModel {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    public Long id;
 
     @Column(name = "merchant_id", nullable = false)
     private Integer merchantId;

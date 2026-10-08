@@ -40,13 +40,13 @@ public class MerchantSocialMediaLinkRepository implements PanacheRepository<Merc
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long merchantSocialId) {
+    public Uni<MerchantSocialMediaLink> deletePermanent(Long merchantSocialId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", merchantSocialId).firstResult()
                 .chain(socialLink -> {
                     if (socialLink != null) {
-                        return delete(socialLink).map(v -> true);
+                        return delete(socialLink).map(v -> socialLink);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

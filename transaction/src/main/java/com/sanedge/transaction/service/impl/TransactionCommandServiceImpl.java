@@ -1,38 +1,43 @@
 package com.sanedge.transaction.service.impl;
 
+import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.sanedge.common.adapter.merchant.MerchantPort;
+import com.sanedge.common.adapter.model.Order;
+import com.sanedge.common.adapter.model.OrderItem;
+import com.sanedge.common.adapter.model.ShippingAddress;
+import com.sanedge.common.adapter.model.User;
+import com.sanedge.common.adapter.order.OrderPort;
+import com.sanedge.common.adapter.order_item.OrderItemPort;
+import com.sanedge.common.adapter.shipping_address.ShippingAddressPort;
+import com.sanedge.common.adapter.user.UserPort;
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.exception.ResourceNotFoundException;
+import com.sanedge.common.exception.InvalidRequestException;
+import com.sanedge.common.exception.ResourceAlreadyExistsException;
+import com.sanedge.common.observability.TracingMetrics;
 import com.sanedge.transaction.domain.requests.CreateTransactionRequest;
 import com.sanedge.transaction.domain.requests.UpdateTransactionRequest;
 import com.sanedge.transaction.domain.response.TransactionResponse;
 import com.sanedge.transaction.domain.response.TransactionResponseDeleteAt;
-import com.sanedge.transaction.repository.TransactionCommandRepository;
-import com.sanedge.transaction.repository.TransactionQueryRepository;
-import com.sanedge.transaction.service.TransactionCommandService;
 import com.sanedge.transaction.entity.Transaction;
 import com.sanedge.transaction.enums.PaymentStatus;
+import com.sanedge.transaction.repository.TransactionCommandRepository;
+import com.sanedge.transaction.repository.TransactionQueryRepository;
+import com.sanedge.transaction.entity.TransactionOutbox;
+import com.sanedge.transaction.repository.TransactionOutboxRepository;
 import com.sanedge.transaction.service.KafkaService;
-import io.quarkus.grpc.GrpcClient;
-import io.vertx.core.json.JsonObject;
-import pb.user.UserQueryService;
+import com.sanedge.transaction.service.TransactionCommandService;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
+import io.vertx.core.json.JsonObject;
+
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -44,55 +49,39 @@ public class TransactionCommandServiceImpl implements TransactionCommandService 
 
     private final TransactionQueryRepository transactionQueryRepository;
     private final TransactionCommandRepository transactionCommandRepository;
-    private final OpenTelemetry openTelemetry;
     private final RedisService redisService;
-
-    private final Tracer tracer;
-    private final LongCounter requestsTotal;
-    private final DoubleHistogram requestDurationSeconds;
+    private final TracingMetrics tracingMetrics;
 
     @Inject
-    @GrpcClient("merchant")
-    pb.merchant.MerchantQueryService merchantQueryService;
+    MerchantPort merchantPort;
 
     @Inject
-    @GrpcClient("order")
-    pb.order.OrderQueryService orderQueryService;
+    OrderPort orderPort;
 
     @Inject
-    @GrpcClient("order_item")
-    pb.order_item.OrderItemQueryService orderItemQueryService;
+    OrderItemPort orderItemPort;
 
     @Inject
-    @GrpcClient("shipping_address")
-    pb.shipping_address.ShippingQueryService shippingQueryService;
+    ShippingAddressPort shippingPort;
 
     @Inject
-    @GrpcClient("user")
-    UserQueryService userQueryService;
+    UserPort userPort;
 
     @Inject
     KafkaService kafkaService;
 
     @Inject
+    TransactionOutboxRepository transactionOutboxRepository;
+
+    @Inject
     public TransactionCommandServiceImpl(TransactionQueryRepository transactionQueryRepository,
             TransactionCommandRepository transactionCommandRepository,
-            OpenTelemetry openTelemetry,
-            RedisService redisService) {
+            RedisService redisService,
+            TracingMetrics tracingMetrics) {
         this.transactionQueryRepository = transactionQueryRepository;
         this.transactionCommandRepository = transactionCommandRepository;
-        this.openTelemetry = openTelemetry;
         this.redisService = redisService;
-        this.tracer = openTelemetry.getTracer("transaction-command-service", "1.0.0");
-        Meter meter = openTelemetry.getMeter("transaction-command-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
+        this.tracingMetrics = tracingMetrics;
     }
 
     private Uni<Void> invalidateCache(Long txId, Integer orderId) {
@@ -112,545 +101,355 @@ public class TransactionCommandServiceImpl implements TransactionCommandService 
     @Override
     @WithTransaction
     public Uni<ApiResponse<TransactionResponse>> create(CreateTransactionRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("createTransaction")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "create_transaction")
-                .setAttribute("order.id", req.getOrderID() != null ? req.getOrderID().toString() : "null")
-                .setAttribute("merchant.id", req.getMerchantID() != null ? req.getMerchantID().toString() : "null")
-                .startSpan();
+        logger.info("Creating new transaction | orderId={}, merchantId={}", req.getOrderID(), req.getMerchantID());
 
-        logger.info("💳 Creating new transaction | orderId={}, merchantId={}", req.getOrderID(), req.getMerchantID());
-
-        return merchantQueryService.findById(pb.merchant.MerchantCommon.FindByIdMerchantRequest.newBuilder().setId(req.getMerchantID()).build())
-                .chain(merchantResponse -> {
-                    if (merchantResponse == null || !merchantResponse.hasData() || merchantResponse.getData().getId() == 0) {
-                        logger.error("❌ Merchant not found | merchantId={}", req.getMerchantID());
-                        throw new ResourceNotFoundException("Merchant not found");
+        return findExistingTransaction(req.getOrderID())
+                .chain(existing -> {
+                    if (existing.isPresent()) {
+                        throw new ResourceAlreadyExistsException(
+                                "An active transaction already exists for order id=" + req.getOrderID());
                     }
-
-                    return orderQueryService.findById(pb.order.OrderCommon.FindByIdOrderRequest.newBuilder().setId(req.getOrderID()).build());
-                })
-                .chain(orderResponse -> {
-                    if (orderResponse == null || !orderResponse.hasData() || orderResponse.getData().getId() == 0) {
-                        logger.error("❌ Order not found | orderId={}", req.getOrderID());
-                        throw new ResourceNotFoundException("Order not found");
-                    }
-                    pb.order.OrderCommon.OrderResponse order = orderResponse.getData();
-
-                    return Uni.combine().all().unis(
-                            orderItemQueryService.findOrderItemByOrder(pb.order_item.OrderItemCommon.FindByIdOrderItemRequest.newBuilder().setId(order.getId()).build()),
-                            shippingQueryService.findByOrder(pb.shipping_address.ShippingAddressCommon.FindByIdShippingRequest.newBuilder().setId(order.getId()).build())
-                    ).asTuple().chain(tuple -> {
-                        List<pb.order_item.OrderItemCommon.OrderItemResponse> orderItems = tuple.getItem1().getDataList();
-                        pb.shipping_address.ShippingAddressCommon.ShippingResponse shipping = tuple.getItem2().getData();
-
-                        if (orderItems.isEmpty()) {
-                            logger.error("❌ No order items found | orderId={}", req.getOrderID());
-                            throw new IllegalArgumentException("No order items found");
-                        }
-
-                        if (shipping == null || shipping.getId() == 0) {
-                            logger.error("❌ Shipping address not found | orderId={}", req.getOrderID());
-                            throw new ResourceNotFoundException("Shipping address not found");
-                        }
-
-                        int totalAmount = 0;
-                        for (pb.order_item.OrderItemCommon.OrderItemResponse item : orderItems) {
-                            if (item.getQuantity() <= 0) {
-                                throw new IllegalArgumentException("Invalid order item quantity");
+                    return tracingMetrics.traceAndMeasure("createTransaction", "create_transaction",
+                Attributes.builder()
+                        .put("order.id", req.getOrderID() != null ? req.getOrderID().toString() : "null")
+                        .put("merchant.id", req.getMerchantID() != null ? req.getMerchantID().toString() : "null")
+                        .build(),
+                () -> merchantPort
+                        .findById(req.getMerchantID())
+                        .chain(merchant -> orderPort.findById(req.getOrderID()))
+                        .chain(order -> {
+                            if (order == null) {
+                                logger.error("Order not found | orderId={}", req.getOrderID());
+                                throw new ResourceNotFoundException("Order not found");
                             }
-                            totalAmount += item.getPrice() * item.getQuantity();
-                        }
-                        totalAmount += shipping.getShippingCost();
-                        int ppn = totalAmount * 11 / 100;
-                        int totalAmountWithTax = totalAmount + ppn;
 
-                        String paymentStatus = req.getAmount() >= totalAmountWithTax ? "success" : "failed";
-                        if (paymentStatus.equals("failed")) {
-                            logger.error("❌ Insufficient payment amount | amount={}, required={}",
-                                    req.getAmount(), totalAmountWithTax);
-                            throw new IllegalArgumentException("Insufficient payment amount");
-                        }
+                            return Uni.combine().all().unis(
+                                    orderItemPort.findOrderItemByOrder(order.id()),
+                                    shippingPort.findByOrder(order.id()))
+                                    .asTuple().chain(tuple -> {
+                                        List<OrderItem> orderItems = tuple.getItem1();
+                                        ShippingAddress shipping = tuple.getItem2();
 
-                        req.setAmount(totalAmountWithTax);
-                        req.setPaymentStatus(paymentStatus);
+                                        if (orderItems.isEmpty()) {
+                                            logger.error("No order items found | orderId={}", req.getOrderID());
+                                            throw new IllegalArgumentException("No order items found");
+                                        }
 
-                        Transaction transaction = new Transaction();
-                        transaction.setOrderId(req.getOrderID());
-                        transaction.setMerchantId(req.getMerchantID());
-                        transaction.setPaymentMethod(req.getPaymentMethod());
-                        transaction.setAmount(req.getAmount());
-                        transaction.setStatus(PaymentStatus.fromValue(req.getPaymentStatus()));
+                                        if (shipping == null) {
+                                            logger.error("Shipping address not found | orderId={}", req.getOrderID());
+                                            throw new ResourceNotFoundException("Shipping address not found");
+                                        }
 
-                        return transactionCommandRepository.persist(transaction)
-                                .chain(saved -> sendTransactionEmail(saved, order).replaceWith(saved));
-                    });
-                })
-                .chain(saved -> {
-                    TransactionResponse response = TransactionResponse.from(saved);
-                    span.setAttribute("transaction.id", saved.id);
+                                        int totalAmount = 0;
+                                        for (OrderItem item : orderItems) {
+                                            if (item.quantity() <= 0) {
+                                                throw new IllegalArgumentException("Invalid order item quantity");
+                                            }
+                                            totalAmount += item.price() * item.quantity();
+                                        }
+                                        totalAmount += shipping.shippingCost();
+                                        int ppn = totalAmount * 11 / 100;
+                                        int totalAmountWithTax = totalAmount + ppn;
 
-                    return invalidateCache(saved.id, saved.getOrderId())
-                            .map(v -> {
-                                logger.info("✅ Transaction created successfully | transactionId={}", saved.id);
-                                span.setStatus(StatusCode.OK);
+                                        String paymentStatus = req.getAmount() >= totalAmountWithTax ? "success"
+                                                : "failed";
+                                        if (paymentStatus.equals("failed")) {
+                                            logger.error("Insufficient payment amount | amount={}, required={}",
+                                                    req.getAmount(), totalAmountWithTax);
+                                            throw new IllegalArgumentException("Insufficient payment amount");
+                                        }
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "create_transaction",
-                                        AttributeKey.stringKey("status"), "success"));
+                                        req.setAmount(totalAmountWithTax);
 
-                                return ApiResponse.success("Transaction created successfully", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to create transaction", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
+                                        Transaction transaction = new Transaction();
+                                        transaction.setOrderId(req.getOrderID());
+                                        transaction.setMerchantId(req.getMerchantID());
+                                        transaction.setPaymentMethod(req.getPaymentMethod());
+                                        transaction.setAmount(req.getAmount());
+                                        transaction.setStatus(PaymentStatus.PENDING);
 
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_transaction",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "create_transaction"));
+                                        return transactionCommandRepository.persist(transaction)
+                                                .chain(saved -> sendTransactionEmail(saved, order).replaceWith(saved));
+                                    });
+                        })
+                        .chain(saved -> {
+                            TransactionResponse response = TransactionResponse.from(saved);
+                            return invalidateCache(saved.id, saved.getOrderId())
+                                    .map(v -> {
+                                        logger.info("Transaction created successfully | transactionId={}", saved.id);
+                                        return ApiResponse.success("Transaction created successfully", response);
+                                    });
+                        }));
                 });
+    }
+
+    private Uni<java.util.Optional<Transaction>> findExistingTransaction(Integer orderId) {
+        Uni<java.util.Optional<Transaction>> existing = transactionQueryRepository.findActivePaymentByOrderId(orderId);
+        return existing != null ? existing : Uni.createFrom().item(java.util.Optional.empty());
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<TransactionResponse>> update(UpdateTransactionRequest req) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("updateTransaction")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "update_transaction")
-                .setAttribute("transaction.id",
-                        req.getTransactionID() != null ? req.getTransactionID().toString() : "null")
-                .startSpan();
+        logger.info("Updating transaction | transactionId={}", req.getTransactionID());
 
-        logger.info("✏️ Updating transaction | transactionId={}", req.getTransactionID());
+        return tracingMetrics.traceAndMeasure("updateTransaction", "update_transaction",
+                Attributes.builder()
+                        .put("transaction.id",
+                                req.getTransactionID() != null ? req.getTransactionID().toString() : "null")
+                        .build(),
+                () -> transactionQueryRepository.findTransactionById(req.getTransactionID().longValue())
+                        .chain(existingTx -> {
+                            if (existingTx.isEmpty()) {
+                                logger.error("Transaction not found | transactionId={}", req.getTransactionID());
+                                throw new ResourceNotFoundException("Transaction not found");
+                            }
+                            Transaction tx = existingTx.get();
 
-        return transactionQueryRepository.findTransactionById(req.getTransactionID().longValue())
-                .chain(existingTx -> {
-                    if (existingTx.isEmpty()) {
-                        logger.error("❌ Transaction not found | transactionId={}", req.getTransactionID());
-                        throw new ResourceNotFoundException("Transaction not found");
-                    }
-                    Transaction tx = existingTx.get();
+                            if (PaymentStatus.SUCCESS.equals(tx.getStatus()) ||
+                                    PaymentStatus.REFUNDED.equals(tx.getStatus())) {
+                                logger.error("Transaction cannot be modified | transactionId={}",
+                                        req.getTransactionID());
+                                throw new IllegalArgumentException("Transaction cannot be modified");
+                            }
 
-                    if (PaymentStatus.SUCCESS.equals(tx.getStatus()) ||
-                            PaymentStatus.REFUNDED.equals(tx.getStatus())) {
-                        logger.error("❌ Transaction cannot be modified | transactionId={}", req.getTransactionID());
-                        throw new IllegalArgumentException("Transaction cannot be modified");
-                    }
-
-                    return merchantQueryService.findById(pb.merchant.MerchantCommon.FindByIdMerchantRequest.newBuilder().setId(req.getMerchantID()).build())
-                            .chain(merchantResponse -> {
-                                if (merchantResponse == null || !merchantResponse.hasData() || merchantResponse.getData().getId() == 0) {
-                                    logger.error("❌ Merchant not found | merchantId={}", req.getMerchantID());
-                                    throw new ResourceNotFoundException("Merchant not found");
-                                }
-
-                                return orderQueryService.findById(pb.order.OrderCommon.FindByIdOrderRequest.newBuilder().setId(req.getOrderID()).build());
-                            })
-                            .chain(orderResponse -> {
-                                if (orderResponse == null || !orderResponse.hasData() || orderResponse.getData().getId() == 0) {
-                                    logger.error("❌ Order not found | orderId={}", req.getOrderID());
-                                    throw new ResourceNotFoundException("Order not found");
-                                }
-                                pb.order.OrderCommon.OrderResponse order = orderResponse.getData();
-
-                                return Uni.combine().all().unis(
-                                        orderItemQueryService.findOrderItemByOrder(pb.order_item.OrderItemCommon.FindByIdOrderItemRequest.newBuilder().setId(order.getId()).build()),
-                                        shippingQueryService.findByOrder(pb.shipping_address.ShippingAddressCommon.FindByIdShippingRequest.newBuilder().setId(order.getId()).build())
-                                ).asTuple().chain(tuple -> {
-                                    List<pb.order_item.OrderItemCommon.OrderItemResponse> orderItems = tuple.getItem1().getDataList();
-                                    pb.shipping_address.ShippingAddressCommon.ShippingResponse shipping = tuple.getItem2().getData();
-
-                                    if (orderItems.isEmpty()) {
-                                        logger.error("❌ No order items found | orderId={}", req.getOrderID());
-                                        throw new IllegalArgumentException("No order items found");
-                                    }
-
-                                    if (shipping == null || shipping.getId() == 0) {
-                                        logger.error("❌ Shipping address not found | orderId={}",
-                                                req.getOrderID());
-                                        throw new ResourceNotFoundException("Shipping address not found");
-                                    }
-
-                                    int totalAmount = 0;
-                                    for (pb.order_item.OrderItemCommon.OrderItemResponse item : orderItems) {
-                                        if (item.getQuantity() <= 0) {
-                                            throw new IllegalArgumentException("Invalid order item quantity");
+                            return merchantPort
+                                    .findById(req.getMerchantID())
+                                    .chain(merchant -> orderPort.findById(req.getOrderID()))
+                                    .chain(order -> {
+                                        if (order == null) {
+                                            logger.error("Order not found | orderId={}", req.getOrderID());
+                                            throw new ResourceNotFoundException("Order not found");
                                         }
-                                        totalAmount += item.getPrice() * item.getQuantity();
-                                    }
-                                    totalAmount += shipping.getShippingCost();
-                                    int ppn = totalAmount * 11 / 100;
-                                    int totalAmountWithTax = totalAmount + ppn;
 
-                                    String paymentStatus = req.getAmount() >= totalAmountWithTax ? "success"
-                                            : "failed";
-                                    if (paymentStatus.equals("failed")) {
-                                        logger.error("❌ Insufficient payment amount | amount={}, required={}",
-                                                req.getAmount(), totalAmountWithTax);
-                                        throw new IllegalArgumentException("Insufficient payment amount");
-                                    }
+                                        return Uni.combine().all().unis(
+                                                orderItemPort.findOrderItemByOrder(order.id()),
+                                                shippingPort.findByOrder(order.id()))
+                                                .asTuple().chain(tuple -> {
+                                                    List<OrderItem> orderItems = tuple.getItem1();
+                                                    ShippingAddress shipping = tuple.getItem2();
 
-                                    req.setAmount(totalAmountWithTax);
-                                    req.setPaymentStatus(paymentStatus);
+                                                    if (orderItems.isEmpty()) {
+                                                        logger.error("No order items found | orderId={}",
+                                                                req.getOrderID());
+                                                        throw new IllegalArgumentException("No order items found");
+                                                    }
 
-                                    tx.setOrderId(req.getOrderID());
-                                    tx.setMerchantId(req.getMerchantID());
-                                    tx.setPaymentMethod(req.getPaymentMethod());
-                                    tx.setAmount(req.getAmount());
-                                    tx.setStatus(PaymentStatus.fromValue(req.getPaymentStatus()));
+                                                    if (shipping == null) {
+                                                        logger.error("Shipping address not found | orderId={}",
+                                                                req.getOrderID());
+                                                        throw new ResourceNotFoundException(
+                                                                "Shipping address not found");
+                                                    }
 
-                                    return transactionCommandRepository.persist(tx);
-                                });
-                            });
-                })
-                .chain(updated -> {
-                    TransactionResponse response = TransactionResponse.from(updated);
+                                                    int totalAmount = 0;
+                                                    for (OrderItem item : orderItems) {
+                                                        if (item.quantity() <= 0) {
+                                                            throw new IllegalArgumentException(
+                                                                    "Invalid order item quantity");
+                                                        }
+                                                        totalAmount += item.price() * item.quantity();
+                                                    }
+                                                    totalAmount += shipping.shippingCost();
+                                                    int ppn = totalAmount * 11 / 100;
+                                                    int totalAmountWithTax = totalAmount + ppn;
 
-                    return invalidateCache(updated.id, updated.getOrderId())
-                            .map(v -> {
-                                logger.info("✅ Transaction updated successfully | transactionId={}", updated.id);
-                                span.setStatus(StatusCode.OK);
+                                                    String paymentStatus = req.getAmount() >= totalAmountWithTax
+                                                            ? "success"
+                                                            : "failed";
+                                                    if (paymentStatus.equals("failed")) {
+                                                        logger.error(
+                                                                "Insufficient payment amount | amount={}, required={}",
+                                                                req.getAmount(), totalAmountWithTax);
+                                                        throw new IllegalArgumentException(
+                                                                "Insufficient payment amount");
+                                                    }
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "update_transaction",
-                                        AttributeKey.stringKey("status"), "success"));
+                                                    req.setAmount(totalAmountWithTax);
 
-                                return ApiResponse.success("Transaction updated successfully", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to update transaction", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
+                                                    tx.setOrderId(req.getOrderID());
+                                                    tx.setMerchantId(req.getMerchantID());
+                                                    tx.setPaymentMethod(req.getPaymentMethod());
+                                                    tx.setAmount(req.getAmount());
+                                                    tx.setStatus(PaymentStatus.PENDING);
 
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_transaction",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "update_transaction"));
-                });
+                                                    return transactionCommandRepository.persist(tx);
+                                                });
+                                    });
+                        })
+                        .chain(updated -> {
+                            TransactionResponse response = TransactionResponse.from(updated);
+                            return invalidateCache(updated.id, updated.getOrderId())
+                                    .map(v -> {
+                                        logger.info("Transaction updated successfully | transactionId={}", updated.id);
+                                        return ApiResponse.success("Transaction updated successfully", response);
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<TransactionResponseDeleteAt>> trash(Integer id) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("trashTransaction")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "trash_transaction")
-                .setAttribute("transaction.id", id.toString())
-                .startSpan();
+        logger.info("Trashing transaction id={}", id);
 
-        logger.info("🗑️ Trashing transaction id={}", id);
+        return tracingMetrics.traceAndMeasure("trashTransaction", "trash_transaction",
+                Attributes.builder().put("transaction.id", id.toString()).build(),
+                () -> transactionCommandRepository.trashed(id.longValue())
+                        .chain(transaction -> {
+                            if (transaction == null) {
+                                throw new ResourceNotFoundException("Transaction not found or already trashed");
+                            }
+                            TransactionResponseDeleteAt response = TransactionResponseDeleteAt.from(transaction);
 
-        return transactionCommandRepository.trashed(id.longValue())
-                .chain(transaction -> {
-                    if (transaction == null) {
-                        throw new ResourceNotFoundException("Transaction not found or already trashed");
-                    }
-                    TransactionResponseDeleteAt response = TransactionResponseDeleteAt.from(transaction);
-
-                    return invalidateCache(id.longValue(), transaction.getOrderId())
-                            .map(v -> {
-                                logger.info("Successfully trashed transaction with ID: {}", id);
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "trash_transaction",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("🗑️ Transaction trashed successfully!", response);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to trash transaction id={}", id, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_transaction",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "trash_transaction"));
-                });
+                            return invalidateCache(id.longValue(), transaction.getOrderId())
+                                    .map(v -> {
+                                        logger.info("Successfully trashed transaction with ID: {}", id);
+                                        return ApiResponse.success("Transaction trashed successfully", response);
+                                    });
+                        }));
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<TransactionResponseDeleteAt>> restore(Integer id) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreTransaction")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "restore_transaction")
-                .setAttribute("transaction.id", id.toString())
-                .startSpan();
+        logger.info("Restoring transaction id={}", id);
 
-        logger.info("♻️ Restoring transaction id={}", id);
+        return tracingMetrics.traceAndMeasure("restoreTransaction", "restore_transaction",
+                Attributes.builder().put("transaction.id", id.toString()).build(),
+                () -> transactionCommandRepository.restore(id.longValue())
+                        .chain(transaction -> {
+                            if (transaction == null) {
+                                throw new ResourceNotFoundException("Transaction not found or not trashed");
+                            }
+                            TransactionResponseDeleteAt response = TransactionResponseDeleteAt.from(transaction);
 
-        return transactionCommandRepository.restore(id.longValue())
-                .chain(transaction -> {
-                    if (transaction == null) {
-                        throw new ResourceNotFoundException("Transaction not found or not trashed");
-                    }
-                    TransactionResponseDeleteAt response = TransactionResponseDeleteAt.from(transaction);
+                            return invalidateCache(id.longValue(), transaction.getOrderId())
+                                    .map(v -> {
+                                        logger.info("Successfully restored transaction with ID: {}", id);
+                                        return ApiResponse.success("Transaction restored successfully", response);
+                                    });
+                        }));
+    }
 
-                    return invalidateCache(id.longValue(), transaction.getOrderId())
-                            .map(v -> {
-                                logger.info("Successfully restored transaction with ID: {}", id);
-                                span.setStatus(StatusCode.OK);
+    @Override
+    @WithTransaction
+    public Uni<ApiResponse<Void>> delete(Integer id) {
+        Attributes attrs = Attributes.builder().put("transaction.id", id.toString()).build();
+        logger.warn("Permanently deleting transaction id={}", id);
 
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "restore_transaction",
-                                        AttributeKey.stringKey("status"), "success"));
+        return tracingMetrics.traceAndMeasure("deleteTransactionPermanent", "delete_transaction_permanent", attrs,
+                () -> {
+                    return transactionCommandRepository.deletePermanent(id.longValue())
+                            .chain(deletedTx -> {
+                                if (deletedTx == null) {
+                                    logger.warn(
+                                            "Permanent delete failed - transaction not found or must be trashed before permanent deletion with id: {}",
+                                            id);
+                                    throw new InvalidRequestException(
+                                            "Transaction not found or must be trashed before permanent deletion");
+                                }
 
-                                return ApiResponse.success("♻️ Transaction restored successfully!", response);
+                                return invalidateCache(id.longValue(), deletedTx.getOrderId())
+                                        .map(v2 -> {
+                                            logger.info("Successfully permanently deleted transaction with ID: {}", id);
+                                            return ApiResponse.success("Transaction permanently deleted");
+                                        });
                             });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to restore transaction id={}", id, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_transaction",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_transaction"));
                 });
     }
 
     @Override
     @WithTransaction
-    public Uni<ApiResponse<Boolean>> delete(Integer id) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteTransactionPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "delete_transaction_permanent")
-                .setAttribute("transaction.id", id.toString())
-                .startSpan();
+    public Uni<ApiResponse<Void>> restoreAll() {
+        logger.info("Restoring ALL trashed transactions");
 
-        logger.warn("🧨 Permanently deleting transaction id={}", id);
-
-        return transactionCommandRepository.deletePermanent(id.longValue())
-                .chain(deleted -> {
-                    return invalidateCache(id.longValue(), null)
-                            .map(v -> {
-                                logger.info("Successfully permanently deleted transaction with ID: {}", id);
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "delete_transaction_permanent",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("🧨 Transaction permanently deleted!", deleted);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to permanently delete transaction id={}", id, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_transaction_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_transaction_permanent"));
-                });
+        return tracingMetrics.traceAndMeasure("restoreAllTransactions", "restore_all_transactions", () -> {
+            return transactionCommandRepository.restoreAllDeleted()
+                    .chain(success -> {
+                        if (!success) {
+                            throw new ResourceNotFoundException("No trashed transactions found");
+                        }
+                        return invalidateCache(null, null)
+                                .map(v -> {
+                                    logger.info("Successfully restored all trashed transactions");
+                                    return ApiResponse.success("All transactions restored successfully");
+                                });
+                    });
+        });
     }
 
     @Override
     @WithTransaction
-    public Uni<ApiResponse<Boolean>> restoreAll() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("restoreAllTransactions")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "restore_all_transactions")
-                .startSpan();
+    public Uni<ApiResponse<Void>> deleteAll() {
+        logger.warn("Permanently deleting ALL trashed transactions");
 
-        logger.info("🔄 Restoring ALL trashed transactions");
-
-        return transactionCommandRepository.restoreAllDeleted()
-                .chain(restored -> {
-                    return invalidateCache(null, null)
-                            .map(v -> {
-                                logger.info("Successfully restored all trashed transactions");
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "restore_all_transactions",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("🔄 All transactions restored successfully!", restored);
+        return tracingMetrics.traceAndMeasure("deleteAllTransactionsPermanent", "delete_all_transactions_permanent",
+                () -> {
+                    return transactionCommandRepository.deleteAllDeleted()
+                            .chain(success -> {
+                                if (!success) {
+                                    throw new ResourceNotFoundException("No trashed transactions found");
+                                }
+                                return invalidateCache(null, null)
+                                        .map(v -> {
+                                            logger.info("Successfully permanently deleted all trashed transactions");
+                                            return ApiResponse.success("All transactions permanently deleted");
+                                        });
                             });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to restore all transactions", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_transactions",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "restore_all_transactions"));
-                });
-    }
-
-    @Override
-    @WithTransaction
-    public Uni<ApiResponse<Boolean>> deleteAll() {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteAllTransactionsPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "delete_all_transactions_permanent")
-                .startSpan();
-
-        logger.warn("💣 Permanently deleting ALL trashed transactions");
-
-        return transactionCommandRepository.deleteAllDeleted()
-                .chain(deleted -> {
-                    return invalidateCache(null, null)
-                            .map(v -> {
-                                logger.info("Successfully permanently deleted all trashed transactions");
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "delete_all_transactions_permanent",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("💣 All transactions permanently deleted!", deleted);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to delete all transactions", e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_transactions_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_all_transactions_permanent"));
                 });
     }
 
     @Override
     @WithTransaction
     public Uni<ApiResponse<Boolean>> deleteByOrder(Integer orderId) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("deleteTransactionByOrderPermanent")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "transaction-service")
-                .setAttribute("operation", "delete_transaction_by_order_permanent")
-                .setAttribute("order.id", orderId.toString())
-                .startSpan();
+        logger.warn("Permanently deleting transaction by order id={}", orderId);
 
-        logger.warn("🧨 Permanently deleting transaction by order id={}", orderId);
-
-        return transactionCommandRepository.deleteByOrderPermanent(orderId.longValue())
-                .chain(deleted -> {
-                    return invalidateCache(null, orderId)
-                            .map(v -> {
-                                logger.info("Successfully permanently deleted transaction by order ID: {}", orderId);
-                                span.setStatus(StatusCode.OK);
-
-                                requestsTotal.add(1, Attributes.of(
-                                        AttributeKey.stringKey("operation"), "delete_transaction_by_order_permanent",
-                                        AttributeKey.stringKey("status"), "success"));
-
-                                return ApiResponse.success("🧨 Transaction by order permanently deleted!", deleted);
-                            });
-                })
-                .onFailure().invoke(e -> {
-                    logger.error("💥 Failed to permanently delete transaction by order id={}", orderId, e);
-                    span.recordException(e);
-                    span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_transaction_by_order_permanent",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "delete_transaction_by_order_permanent"));
-                });
+        return tracingMetrics.traceAndMeasure("deleteTransactionByOrderPermanent",
+                "delete_transaction_by_order_permanent",
+                Attributes.builder().put("order.id", orderId.toString()).build(),
+                () -> transactionCommandRepository.deleteByOrderPermanent(orderId.longValue())
+                        .chain(deleted -> invalidateCache(null, orderId)
+                                .map(v -> {
+                                    logger.info("Successfully permanently deleted transaction by order ID: {}",
+                                            orderId);
+                                    return ApiResponse.success("Transaction by order permanently deleted", deleted);
+                                })));
     }
 
-    private Uni<Void> sendTransactionEmail(Transaction tx, pb.order.OrderCommon.OrderResponse order) {
-        return userQueryService
-                .findById(pb.user.UserCommon.FindByIdUserRequest.newBuilder().setId(order.getUserId()).build())
-                .chain(res -> {
-                    if (!"success".equalsIgnoreCase(res.getStatus()) || !res.hasData()) {
-                        logger.warn("⚠️ User not found for transaction email, userId={}", order.getUserId());
-                        return Uni.createFrom().voidItem();
-                    }
-                    pb.user.UserCommon.UserResponse user = res.getData();
-
+    // Package-private to allow @Spy-based happy-path tests to bypass the email
+    // Kafka chain.
+    Uni<Void> sendTransactionEmail(Transaction tx, Order order) {
+        return userPort
+                .findById(order.userId())
+                .chain(user -> {
                     String subject = "Transaction Created Successfully";
                     String body = String.format(
                             "Hello %s %s,\n\nYour transaction has been created successfully!\n\nTransaction Details:\n- ID: %s\n- Amount: %s\n- Payment Method: %s\n- Status: %s\n\nThank you for shopping with us!\n\nRegards,\nSupport Team",
-                            user.getFirstname(), user.getLastname(), tx.id, tx.getAmount(), tx.getPaymentMethod(),
+                            user.firstname(), user.lastname(), tx.id, tx.getAmount(), tx.getPaymentMethod(),
                             tx.getStatus());
 
+                    String eventId = UUID.randomUUID().toString();
                     JsonObject payload = new JsonObject()
-                            .put("email", user.getEmail())
+                            .put("email", user.email())
                             .put("subject", subject)
-                            .put("body", body);
+                            .put("body", body)
+                            .put("event_id", eventId)
+                            .put("schema_version", 1)
+                            .put("event_type", "email-service-topic-transaction-create")
+                            .put("occurred_at", Instant.now().toString());
 
-                    return kafkaService.sendMessage("email-service-topic-transaction-create", user.getEmail(), payload);
+                    if (transactionOutboxRepository == null) {
+                        return kafkaService.sendExistingEvent("email-service-topic-transaction-create", user.email(), payload);
+                    }
+
+                    TransactionOutbox event = new TransactionOutbox();
+                    event.setEventId(eventId);
+                    event.setTopic("email-service-topic-transaction-create");
+                    event.setEventKey(user.email());
+                    event.setPayload(payload.encode());
+                    return transactionOutboxRepository.persist(event).replaceWithVoid();
                 })
-                .onFailure().invoke(err -> logger.error("❌ Failed to send transaction email", err))
+                .onFailure().invoke(err -> logger.error("Failed to send transaction email", err))
                 .replaceWithVoid()
                 .onFailure().recoverWithItem((Void) null);
     }

@@ -46,10 +46,6 @@ class RoleHandlerGrpcTest {
         @Mock
         private RoleQueryService roleQueryService;
 
-        // ==========================================
-        // 1. ROLE COMMAND GRPC HANDLER TESTS
-        // ==========================================
-
         @Nested
         class RoleCommandGrpcHandlerTest {
 
@@ -104,7 +100,7 @@ class RoleHandlerGrpcTest {
                         ApiResponseRole response = commandHandler.updateRole(request).await().indefinitely();
 
                         assertThat(response.getStatus()).isEqualTo("success");
-                        assertThat(response.getData().getName()).isEqualTo("Admin"); // Mapped from domain mock
+                        assertThat(response.getData().getName()).isEqualTo("Admin");
                 }
 
                 @Test
@@ -189,10 +185,6 @@ class RoleHandlerGrpcTest {
                         assertThat(response.getStatus()).isEqualTo("success");
                 }
         }
-
-        // ==========================================
-        // 2. ROLE QUERY GRPC HANDLER TESTS
-        // ==========================================
 
         @Nested
         class RoleQueryGrpcHandlerTest {
@@ -422,29 +414,25 @@ class RoleHandlerGrpcTest {
                 }
         }
 
-        // ==========================================
-        // SHARED HELPER METHODS
-        // ==========================================
-
         private void injectDependencies(Object handler) {
-                // Inject roleCommandService if the handler has that field (command handler)
+
                 try {
                         java.lang.reflect.Field commandField = handler.getClass()
                                         .getDeclaredField("roleCommandService");
                         commandField.setAccessible(true);
                         commandField.set(handler, roleCommandService);
                 } catch (NoSuchFieldException e) {
-                        // Query handler has no roleCommandService — skip silently
+
                 } catch (Exception e) {
                         throw new RuntimeException("Failed to inject roleCommandService via reflection", e);
                 }
-                // Inject roleQueryService if the handler has that field (query handler)
+
                 try {
                         java.lang.reflect.Field queryField = handler.getClass().getDeclaredField("roleQueryService");
                         queryField.setAccessible(true);
                         queryField.set(handler, roleQueryService);
                 } catch (NoSuchFieldException e) {
-                        // Command handler has no roleQueryService — skip silently
+
                 } catch (Exception e) {
                         throw new RuntimeException("Failed to inject roleQueryService via reflection", e);
                 }

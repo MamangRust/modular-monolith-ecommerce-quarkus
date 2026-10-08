@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.sanedge</groupId>
@@ -25,6 +24,8 @@
         <lombok.version>1.18.42</lombok.version>
         <swagger-annotations.version>2.2.21</swagger-annotations.version>
         <quarkus-smallrye-health.version>3.30.5</quarkus-smallrye-health.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <awaitility.version>4.2.0</awaitility.version>
     </properties>
 
     <modules>
@@ -32,7 +33,6 @@
         <module>db-migration</module>
         <module>gateway</module>
         <module>auth</module>
-        <module>merchant</module>
         <module>role</module>
         <module>user</module>
         <module>email-service</module>
@@ -41,6 +41,7 @@
         <module>order_item</module>
         <module>transaction</module>
         <module>category</module>
+        <module>merchant</module>
         <module>merchant_award</module>
         <module>merchant_business</module>
         <module>merchant_detail</module>
@@ -71,15 +72,15 @@
                 <artifactId>common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- Reusable test fixtures from common (PostgreSqlResource, RedisResource,
+                 MockTracingMetrics, MockRedisService). Version must be re-declared
+                 for <type>test-jar</type>; Maven does not cross-resolve types. -->
             <dependency>
                 <groupId>com.sanedge</groupId>
-                <artifactId>user-service</artifactId>
+                <artifactId>common</artifactId>
                 <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.sanedge</groupId>
-                <artifactId>product-service</artifactId>
-                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>com.sanedge</groupId>
@@ -99,11 +100,6 @@
             <dependency>
                 <groupId>com.sanedge</groupId>
                 <artifactId>role</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.sanedge</groupId>
-                <artifactId>saldo</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -177,6 +173,14 @@
                 <scope>provided</scope>
             </dependency>
 
+            <!-- Kafka lz4 codec: the Quarkus platform BOM excludes org.lz4:lz4-java,
+                 so the version is pinned once here instead of in every module pom. -->
+            <dependency>
+                <groupId>org.lz4</groupId>
+                <artifactId>lz4-java</artifactId>
+                <version>1.8.0</version>
+            </dependency>
+
             <!-- SmallRye Health (Version Overridden as requested) -->
             <dependency>
                 <groupId>io.quarkus</groupId>
@@ -189,6 +193,38 @@
                 <groupId>io.swagger.core.v3</groupId>
                 <artifactId>swagger-annotations-jakarta</artifactId>
                 <version>${swagger-annotations.version}</version>
+            </dependency>
+
+            <!-- Test Dependencies -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers</artifactId>
+                <version>${testcontainers.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${testcontainers.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>kafka</artifactId>
+                <version>${testcontainers.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>3.25.3</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-test-vertx</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -226,9 +262,21 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-jwt</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-vertx</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>${os-maven-plugin.version}</version>
+            </extension>
+        </extensions>
         <pluginManagement>
             <plugins>
                 <plugin>
@@ -236,6 +284,18 @@
                     <artifactId>quarkus-maven-plugin</artifactId>
                     <version>${quarkus.platform.version}</version>
                     <extensions>true</extensions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <configuration>
+                        <!-- The Docker daemon on this machine enforces a minimum API
+                             version of 1.40 and rejects the 1.32 fallback that
+                             testcontainers' shaded docker-java negotiates. Pinning the
+                             API version for every test fork keeps container-based
+                             QuarkusTest resources (PostgreSQL/Kafka/Redis) working. -->
+                        <argLine>-Dapi.version=1.40</argLine>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

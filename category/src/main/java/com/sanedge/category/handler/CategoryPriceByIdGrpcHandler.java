@@ -7,7 +7,9 @@ import com.sanedge.category.domain.requests.YearPriceIdRequest;
 import com.sanedge.category.service.stats.CategoryPriceByIdService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -16,6 +18,7 @@ import pb.category.stats.MutinyCategoryPriceByIdServiceGrpc;
 import pb.category.CategoryCommon.ApiResponseCategoryMonthPrice;
 import pb.category.CategoryCommon.ApiResponseCategoryYearPrice;
 import pb.category.CategoryCommon.FindYearCategoryById;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -25,7 +28,11 @@ public class CategoryPriceByIdGrpcHandler extends MutinyCategoryPriceByIdService
     CategoryPriceByIdService categoryPriceByIdService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryMonthPrice> findMonthPriceById(FindYearCategoryById request) {
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         MonthPriceIdRequest domainReq = new MonthPriceIdRequest();
         domainReq.setYear(request.getYear());
         domainReq.setCategoryId(request.getCategoryId());
@@ -49,11 +56,15 @@ public class CategoryPriceByIdGrpcHandler extends MutinyCategoryPriceByIdService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryYearPrice> findYearPriceById(FindYearCategoryById request) {
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         YearPriceIdRequest domainReq = new YearPriceIdRequest();
         domainReq.setYear(request.getYear());
         domainReq.setCategoryId(request.getCategoryId());
@@ -78,6 +89,6 @@ public class CategoryPriceByIdGrpcHandler extends MutinyCategoryPriceByIdService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

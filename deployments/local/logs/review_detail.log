@@ -1,0 +1,78 @@
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-08-20 02:12:52,149 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@663bba50; Operation:Query.
+2026-08-20 02:12:52,376 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@1d0fcb2e; Failure: null.
+2026-08-20 02:12:52,450 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@4adc50ae; Operation:Query.
+2026-08-20 02:12:52,572 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@7a47e86a; Failure: null.
+2026-08-20 02:12:52,719 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@454f2e93; Operation:Query.
+2026-08-20 02:12:53,009 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@78f88254; Failure: null.
+2026-08-20 02:12:53,303 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@6f9ab211; Operation:Query.
+2026-08-20 02:12:53,390 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@7de7cf49; Failure: null.
+2026-08-20 02:12:53,391 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@2bacb917; Operation:Query.
+2026-08-20 02:12:53,494 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@25d2d07e; Failure: null.
+2026-08-20 02:12:53,494 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. SpanKind: RPC; Request: io.vertx.sqlclient.impl.tracing.QueryRequest@59719f40; Operation:Query.
+2026-08-20 02:12:53,530 WARN  [io.quarkus.opentelemetry.runtime.tracing.instrumentation.vertx.OpenTelemetryVertxTracingFactory$VertxDelegator] (vert.x-eventloop-thread-1) VertxTracer delegate not set. Will not submit this trace. Response: io.vertx.sqlclient.impl.RowSetImpl@1a2f9ea0; Failure: null.
+2026-08-20 02:12:57,744 WARN  [io.quarkus.grpc.runtime.GrpcServerRecorder] (main) Using legacy gRPC support with a separate HTTP server instance. This is the current default to maintain compatibility.
+You can switch to the new unified HTTP server by setting quarkus.grpc.server.use-separate-server=false
+This change is recommended for new applications and will become the default in future versions.
+
+2026-08-20 02:13:00,434 WARN  [io.vertx.core.impl.BlockedThreadChecker] (vertx-blocked-thread-checker) Thread Thread[vert.x-eventloop-thread-3,5,main] has been blocked for 2545 ms, time limit is 2000 ms: io.vertx.core.VertxException: Thread blocked
+	at java.base/java.lang.ClassLoader.defineClass1(Native Method)
+	at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.defineClass(RunnerClassLoader.java:177)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.loadClass(RunnerClassLoader.java:133)
+	at io.quarkus.bootstrap.runner.RunnerClassLoader.loadClass(RunnerClassLoader.java:87)
+	at java.base/java.lang.Class.getDeclaredMethods0(Native Method)
+	at java.base/java.lang.Class.privateGetDeclaredMethods(Class.java:3580)
+	at java.base/java.lang.Class.getDeclaredMethod(Class.java:2848)
+	at io.quarkus.arc.impl.Reflections.findMethodInternal(Reflections.java:94)
+	at io.quarkus.arc.impl.Reflections$2.apply(Reflections.java:45)
+	at io.quarkus.arc.impl.Reflections$2.apply(Reflections.java:42)
+	at io.quarkus.arc.impl.ComputingCache$1.get(ComputingCache.java:52)
+	at io.quarkus.arc.impl.LazyValue.get(LazyValue.java:32)
+	at io.quarkus.arc.impl.ComputingCache.computeIfAbsent(ComputingCache.java:69)
+	at io.quarkus.arc.impl.ComputingCache.computeIfAbsent(ComputingCache.java:49)
+	at io.quarkus.arc.impl.ComputingCache.getValue(ComputingCache.java:40)
+	at io.quarkus.arc.impl.Reflections.findMethod(Reflections.java:86)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Subclass.arc$initMetadata0(Unknown Source)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Subclass.<init>(Unknown Source)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Bean.create(Unknown Source)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Bean.create(Unknown Source)
+	at io.quarkus.arc.impl.AbstractSharedContext.createInstanceHandle(AbstractSharedContext.java:119)
+	at io.quarkus.arc.impl.AbstractSharedContext$1.get(AbstractSharedContext.java:38)
+	at io.quarkus.arc.impl.AbstractSharedContext$1.get(AbstractSharedContext.java:35)
+	at io.quarkus.arc.impl.LazyValue.get(LazyValue.java:32)
+	at io.quarkus.arc.impl.ComputingCache.computeIfAbsent(ComputingCache.java:69)
+	at io.quarkus.arc.impl.ComputingCacheContextInstances.computeIfAbsent(ComputingCacheContextInstances.java:19)
+	at io.quarkus.arc.impl.AbstractSharedContext.get(AbstractSharedContext.java:35)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Bean.get(Unknown Source)
+	at com.sanedge.review_detail.handler.ReviewDetailQueryGrpcHandler_Bean.get(Unknown Source)
+	at io.quarkus.arc.impl.InstanceImpl.getBeanInstance(InstanceImpl.java:325)
+	at io.quarkus.arc.impl.InstanceImpl$InstanceIterator.next(InstanceImpl.java:363)
+	at io.quarkus.grpc.runtime.GrpcServerRecorder.collectServiceDefinitions(GrpcServerRecorder.java:482)
+	at io.quarkus.grpc.runtime.GrpcServerRecorder.buildServer(GrpcServerRecorder.java:644)
+	at io.quarkus.grpc.runtime.GrpcServerRecorder$GrpcServerVerticle.start(GrpcServerRecorder.java:749)
+	at io.vertx.core.impl.DeploymentManager.lambda$doDeploy$5(DeploymentManager.java:210)
+	at io.vertx.core.impl.ContextInternal.dispatch(ContextInternal.java:270)
+	at io.vertx.core.impl.ContextInternal.dispatch(ContextInternal.java:252)
+	at io.vertx.core.impl.ContextInternal.lambda$runOnContext$0(ContextInternal.java:50)
+	at io.netty.util.concurrent.AbstractEventExecutor.runTask(AbstractEventExecutor.java:173)
+	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:166)
+	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:472)
+	at io.netty.channel.nio.NioEventLoop.run(NioEventLoop.java:569)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$4.run(SingleThreadEventExecutor.java:998)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+2026-08-20 02:13:01,261 INFO  [io.quarkus.grpc.runtime.GrpcServerRecorder] (vert.x-eventloop-thread-4) Started gRPC server on 0.0.0.0:9027 [TLS enabled: false]
+2026-08-20 02:13:01,911 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:07,324 INFO  [com.sanedge.common.chaos.ChaosManager] (main) ✅ Chaos configuration successfully loaded/reloaded from chaos.yaml. Total policies: 121
+2026-08-20 02:13:07,923 INFO  [io.quarkus] (main) review-detail-service 1.0.0-SNAPSHOT on JVM (powered by Quarkus 3.31.3) started in 92.689s. Listening on: http://0.0.0.0:8099
+2026-08-20 02:13:07,924 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-08-20 02:13:07,924 INFO  [io.quarkus] (main) Installed features: [cdi, grpc-client, grpc-server, hibernate-orm, hibernate-reactive, hibernate-reactive-panache, hibernate-validator, opentelemetry, reactive-pg-client, redis-client, rest, rest-jackson, security, smallrye-context-propagation, smallrye-health, smallrye-jwt, vertx]
+2026-08-20 02:31:34,206 INFO  [com.sanedge.common.chaos.ChaosManager] (Shutdown thread) 🛑 Halt command triggered: disabling all chaos policies.
+2026-08-20 02:31:34,206 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (Shutdown thread) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:31:34,361 INFO  [io.quarkus] (Shutdown thread) review-detail-service stopped in 0.207s

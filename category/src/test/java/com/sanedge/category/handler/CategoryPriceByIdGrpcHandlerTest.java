@@ -39,8 +39,6 @@ class CategoryPriceByIdGrpcHandlerTest {
         field.set(handler, categoryPriceByIdService);
     }
 
-    // ========== findMonthPriceById Tests ==========
-
     @Test
     void findMonthPriceById_success_returnsResponse() {
         CategoryCommon.FindYearCategoryById request = CategoryCommon.FindYearCategoryById.newBuilder()
@@ -87,8 +85,6 @@ class CategoryPriceByIdGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== findYearPriceById Tests ==========
 
     @Test
     void findYearPriceById_success_returnsResponse() {

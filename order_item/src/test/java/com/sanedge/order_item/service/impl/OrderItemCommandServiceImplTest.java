@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.exception.InvalidRequestException;
@@ -45,24 +46,14 @@ class OrderItemCommandServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Mock TracingMetrics.traceAndMeasure to execute the supplier directly
-        // Use lenient() to avoid strict stubbing complaints for shared mocks
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
-
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
 
         service = new OrderItemCommandServiceImpl(orderItemRepository, tracingMetrics);
     }
-
-    // --- Create Tests ---
 
     @Test
     void create_shouldSucceed_whenValidRequest() {
@@ -106,8 +97,6 @@ class OrderItemCommandServiceImplTest {
                 .hasMessage("DB error");
     }
 
-    // --- Update Tests ---
-
     @Test
     void update_shouldSucceed_whenOrderItemExists() {
         UpdateOrderItemRequest request = new UpdateOrderItemRequest();
@@ -144,8 +133,6 @@ class OrderItemCommandServiceImplTest {
                 .hasMessage("Order item not found");
     }
 
-    // --- Trash Tests ---
-
     @Test
     void trash_shouldSucceed_whenOrderItemExists() {
         OrderItem trashedItem = createOrderItem(1L, 1, 100, 2, 5000);
@@ -170,8 +157,6 @@ class OrderItemCommandServiceImplTest {
                 .hasMessage("Order item not found");
     }
 
-    // --- Restore Tests ---
-
     @Test
     void restore_shouldSucceed_whenOrderItemInTrash() {
         OrderItem restoredItem = createOrderItem(1L, 1, 100, 2, 5000);
@@ -192,8 +177,6 @@ class OrderItemCommandServiceImplTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Order item not found in trash");
     }
-
-    // --- Delete Permanent Tests ---
 
     @Test
     void deletePermanent_shouldSucceed_whenOrderItemInTrash() {
@@ -216,14 +199,11 @@ class OrderItemCommandServiceImplTest {
                 .hasMessage("Order item not found or must be trashed before permanent deletion");
     }
 
-    // --- Calculate Total Price Tests ---
-
     @Test
     void calculateTotalPrice_shouldReturnCorrectTotal() {
-        OrderItem item1 = createOrderItem(1L, 1, 100, 2, 1000);  // 2 * 1000 = 2000
-        OrderItem item2 = createOrderItem(2L, 1, 101, 3, 500);   // 3 * 500 = 1500
-        OrderItem item3 = createOrderItem(3L, 1, 102, 1, 3000);  // 1 * 3000 = 3000
-        // Total: 2000 + 1500 + 3000 = 6500
+        OrderItem item1 = createOrderItem(1L, 1, 100, 2, 1000);
+        OrderItem item2 = createOrderItem(2L, 1, 101, 3, 500);
+        OrderItem item3 = createOrderItem(3L, 1, 102, 1, 3000);
 
         when(orderItemRepository.findOrderItemByOrder(1L))
                 .thenReturn(Uni.createFrom().item(java.util.List.of(item1, item2, item3)));
@@ -246,8 +226,6 @@ class OrderItemCommandServiceImplTest {
         assertThat(result.data()).isEqualTo(0);
     }
 
-    // --- Helper Methods ---
-
     private OrderItem createOrderItem(Long id, Integer orderId, Integer productId, Integer quantity, Integer price) {
         OrderItem item = new OrderItem();
         item.id = id;
@@ -258,5 +236,24 @@ class OrderItemCommandServiceImplTest {
         item.setCreatedAt(Timestamp.valueOf(LocalDateTime.now()));
         item.setUpdatedAt(Timestamp.valueOf(LocalDateTime.now()));
         return item;
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

@@ -37,13 +37,13 @@ public class TransactionCommandRepository implements PanacheRepository<Transacti
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long transactionId) {
+    public Uni<Transaction> deletePermanent(Long transactionId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", transactionId).firstResult()
                 .chain(transaction -> {
                     if (transaction != null) {
-                        return delete(transaction).map(v -> true);
+                        return delete(transaction).map(v -> transaction);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

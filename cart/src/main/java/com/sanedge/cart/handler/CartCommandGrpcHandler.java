@@ -5,6 +5,7 @@ import com.sanedge.cart.domain.response.CartResponse;
 import com.sanedge.cart.service.CartService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -13,6 +14,7 @@ import pb.cart.MutinyCartCommandServiceGrpc;
 import pb.cart.CartCommon.ApiResponseCart;
 import pb.cart.CartCommon.ApiResponseCartDelete;
 import pb.cart.CartCommon.ApiResponseCartAll;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -23,6 +25,12 @@ public class CartCommandGrpcHandler extends MutinyCartCommandServiceGrpc.CartCom
 
     @Override
     public Uni<ApiResponseCart> create(pb.cart.CartCommand.CreateCartRequest request) {
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
         CreateCartRequest domainReq = new CreateCartRequest();
         domainReq.setQuantity(request.getQuantity());
         domainReq.setProductId(request.getProductId());
@@ -38,11 +46,14 @@ public class CartCommandGrpcHandler extends MutinyCartCommandServiceGrpc.CartCom
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseCartDelete> delete(pb.cart.CartCommand.DeleteCartRequest request) {
+        if (request.getCartId() <= 0) {
+            return IdValidator.invalid("Cart id");
+        }
         return cartService.deletePermanent((long) request.getCartId())
                 .map(apiResp -> ApiResponseCartDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -52,7 +63,7 @@ public class CartCommandGrpcHandler extends MutinyCartCommandServiceGrpc.CartCom
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -66,7 +77,7 @@ public class CartCommandGrpcHandler extends MutinyCartCommandServiceGrpc.CartCom
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.cart.CartCommon.CartResponse toProto(CartResponse r) {

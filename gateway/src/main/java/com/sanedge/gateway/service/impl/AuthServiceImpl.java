@@ -28,7 +28,7 @@ public class AuthServiceImpl implements AuthService {
                         .setLastname(body.lastname())
                         .setEmail(body.email())
                         .setPassword(body.password())
-                        .setConfirmPassword(body.confirmPassword())
+                        .setConfirmPassword(body.confirmPassword() == null ? "" : body.confirmPassword())
                         .build())
                 .map(AuthDto.RegisterResponse::from)
                 .onFailure().invoke(throwable -> LOG.error("Failed to register user: " + throwable.getMessage(), throwable)));
@@ -71,7 +71,7 @@ public class AuthServiceImpl implements AuthService {
                 pb.Auth.ResetPasswordRequest.newBuilder()
                         .setResetToken(body.resetToken())
                         .setPassword(body.password())
-                        .setConfirmPassword(body.confirmPassword())
+                        .setConfirmPassword(body.confirmPassword() == null ? "" : body.confirmPassword())
                         .build())
                 .map(AuthDto.SimpleResponse::from)
                 .onFailure().invoke(throwable -> LOG.error("Failed to reset password: " + throwable.getMessage(), throwable)));

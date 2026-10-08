@@ -1,5 +1,6 @@
 package com.sanedge.order_item.repository;
 
+import com.sanedge.common.repository.PagedQuery;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,9 +26,7 @@ public class OrderItemRepository implements PanacheRepository<OrderItem> {
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
         
         var panacheQuery = find("deletedAt IS NULL").page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<OrderItem>> findActiveOrderItems(FindAllOrderItemRequest req) {
@@ -35,9 +34,7 @@ public class OrderItemRepository implements PanacheRepository<OrderItem> {
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
         
         var panacheQuery = find("deletedAt IS NULL").page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<OrderItem>> findTrashedOrderItems(FindAllOrderItemRequest req) {
@@ -45,13 +42,11 @@ public class OrderItemRepository implements PanacheRepository<OrderItem> {
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
         
         var panacheQuery = find("deletedAt IS NOT NULL").page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     @WithTransaction
-    public Uni<OrderItem> trashed(Long orderItemId) {
+    public Uni<OrderItem> trash(Long orderItemId) {
         return findById(orderItemId)
                 .chain(item -> {
                     if (item != null && item.getDeletedAt() == null) {
@@ -76,13 +71,13 @@ public class OrderItemRepository implements PanacheRepository<OrderItem> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long orderItemId) {
+    public Uni<OrderItem> deletePermanent(Long orderItemId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", orderItemId).firstResult()
                 .chain(item -> {
                     if (item != null) {
-                        return delete(item).map(v -> true);
+                        return delete(item).map(v -> item);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 
@@ -100,6 +95,12 @@ public class OrderItemRepository implements PanacheRepository<OrderItem> {
 
     @WithTransaction
     public Uni<Boolean> deleteByOrderPermanent(Long orderId) {
+        return delete("orderId = ?1 AND deletedAt IS NOT NULL", orderId.intValue())
+                .map(count -> count > 0);
+    }
+
+    @WithTransaction
+    public Uni<Boolean> deleteByOrderRollback(Long orderId) {
         return delete("orderId = ?1", orderId.intValue())
                 .map(count -> count > 0);
     }

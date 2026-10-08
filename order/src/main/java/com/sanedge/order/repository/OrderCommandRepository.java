@@ -37,14 +37,33 @@ public class OrderCommandRepository implements PanacheRepository<Order> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long orderId) {
+    public Uni<Order> persistNew(Order order) {
+        return persist(order);
+    }
+
+    @WithTransaction
+    public Uni<Integer> updateTotalPrice(Long orderId, Integer totalPrice) {
+        return update("totalPrice = ?1 WHERE id = ?2", totalPrice, orderId);
+    }
+
+    @WithTransaction
+    public Uni<Boolean> deleteCreated(Long orderId) {
+        return delete("id = ?1", orderId).map(count -> count > 0);
+    }
+
+    @WithTransaction
+    public Uni<Order> deletePermanent(Long orderId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", orderId).firstResult()
                 .chain(order -> {
                     if (order != null) {
-                        return delete(order).map(v -> true);
+                        return delete(order).map(v -> order);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
+    }
+
+    public Uni<java.util.List<Order>> findAllDeleted() {
+        return list("deletedAt IS NOT NULL");
     }
 
     @WithTransaction

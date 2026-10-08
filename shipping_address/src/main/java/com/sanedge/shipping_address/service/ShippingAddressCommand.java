@@ -11,7 +11,7 @@ public interface ShippingAddressCommand {
     Uni<ApiResponse<ShippingAddressResponse>> update(pb.shipping_address.ShippingAddressCommand.UpdateShippingAddressRequest req);
     Uni<ApiResponse<ShippingAddressResponseDeleteAt>> trash(Integer shippingId);
     Uni<ApiResponse<ShippingAddressResponseDeleteAt>> restore(Integer shippingId);
-    Uni<ApiResponse<Boolean>> deletePermanently(Integer shippingId);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAllPermanent();
+    Uni<ApiResponse<Void>> deletePermanently(Integer shippingId);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAllPermanent();
 }

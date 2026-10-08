@@ -5,7 +5,9 @@ import java.util.stream.Collectors;
 import com.sanedge.transaction.service.stats.TransactionMethodService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -25,6 +27,7 @@ public class TransactionMethodGrpcHandler extends MutinyTransactionMethodService
     TransactionMethodService transactionMethodService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionMonthPaymentMethod> getMonthlyTransactionMethodSuccess(
             MonthMethodTransactionRequest request) {
         com.sanedge.transaction.domain.requests.MonthMethodTransactionRequest domainReq = new com.sanedge.transaction.domain.requests.MonthMethodTransactionRequest();
@@ -47,10 +50,11 @@ public class TransactionMethodGrpcHandler extends MutinyTransactionMethodService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionYearPaymentmethod> getYearlyTransactionMethodSuccess(
             YearMethodTransactionRequest request) {
         return transactionMethodService.findYearlyMethodSuccess(request.getYear())
@@ -69,10 +73,11 @@ public class TransactionMethodGrpcHandler extends MutinyTransactionMethodService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionMonthPaymentMethod> getMonthlyTransactionMethodFailed(
             MonthMethodTransactionRequest request) {
         com.sanedge.transaction.domain.requests.MonthMethodTransactionRequest domainReq = new com.sanedge.transaction.domain.requests.MonthMethodTransactionRequest();
@@ -95,10 +100,11 @@ public class TransactionMethodGrpcHandler extends MutinyTransactionMethodService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseTransactionYearPaymentmethod> getYearlyTransactionMethodFailed(
             YearMethodTransactionRequest request) {
         return transactionMethodService.findYearlyMethodFailed(request.getYear())
@@ -117,6 +123,6 @@ public class TransactionMethodGrpcHandler extends MutinyTransactionMethodService
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

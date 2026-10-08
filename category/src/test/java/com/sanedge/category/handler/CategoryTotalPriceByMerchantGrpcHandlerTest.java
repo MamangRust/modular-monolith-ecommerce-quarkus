@@ -40,8 +40,6 @@ class CategoryTotalPriceByMerchantGrpcHandlerTest {
         field.set(handler, categoryTotalPriceByMerchantService);
     }
 
-    // ========== findMonthlyTotalPricesByMerchant Tests ==========
-
     @Test
     void findMonthlyTotalPricesByMerchant_success_returnsResponse() {
         CategoryCommon.FindYearMonthTotalPriceByMerchant request = CategoryCommon.FindYearMonthTotalPriceByMerchant
@@ -91,8 +89,6 @@ class CategoryTotalPriceByMerchantGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== findYearlyTotalPricesByMerchant Tests ==========
 
     @Test
     void findYearlyTotalPricesByMerchant_success_returnsResponse() {

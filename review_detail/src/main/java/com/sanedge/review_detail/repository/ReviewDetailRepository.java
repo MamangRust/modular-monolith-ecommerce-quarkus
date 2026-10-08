@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class ReviewDetailRepository implements PanacheRepository<ReviewDetail> {
 
     @WithTransaction
-    public Uni<ReviewDetail> trashed(Long reviewDetailId) {
+    public Uni<ReviewDetail> trash(Long reviewDetailId) {
         return findById(reviewDetailId)
                 .chain(detail -> {
                     if (detail != null && detail.getDeletedAt() == null) {
@@ -37,13 +37,13 @@ public class ReviewDetailRepository implements PanacheRepository<ReviewDetail> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long reviewDetailId) {
+    public Uni<ReviewDetail> deletePermanent(Long reviewDetailId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", reviewDetailId).firstResult()
                 .chain(detail -> {
                     if (detail != null) {
-                        return delete(detail).map(v -> true);
+                        return delete(detail).map(v -> detail);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

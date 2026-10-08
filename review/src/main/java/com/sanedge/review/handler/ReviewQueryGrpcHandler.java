@@ -1,7 +1,5 @@
 package com.sanedge.review.handler;
 
-import java.util.List;
-
 import com.sanedge.review.domain.requests.FindAllReview;
 import com.sanedge.review.domain.requests.FindAllReviewByMerchant;
 import com.sanedge.review.domain.requests.FindAllReviewByProduct;
@@ -12,16 +10,19 @@ import com.sanedge.review.domain.response.ReviewResponseDeleteAt;
 import com.sanedge.review.service.ReviewQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.review.MutinyReviewQueryServiceGrpc;
-import pb.review.ReviewCommon.ApiResponseReview;
 import pb.review.ReviewCommon.ApiResponsePaginationReview;
 import pb.review.ReviewCommon.ApiResponsePaginationReviewDeleteAt;
 import pb.review.ReviewCommon.ApiResponsePaginationReviewDetail;
+import pb.review.ReviewCommon.ApiResponseReview;
 import pb.review.ReviewCommon.FindByIdReviewRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -31,6 +32,7 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
     ReviewQueryService reviewQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationReview> findAll(pb.review.ReviewQuery.FindAllReviewRequest request) {
         FindAllReview domainReq = new FindAllReview();
         domainReq.setPage(request.getPage());
@@ -52,11 +54,16 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
-    public Uni<ApiResponsePaginationReviewDetail> findByProduct(pb.review.ReviewQuery.FindAllReviewProductRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationReviewDetail> findByProduct(
+            pb.review.ReviewQuery.FindAllReviewProductRequest request) {
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
         FindAllReviewByProduct domainReq = new FindAllReviewByProduct();
         domainReq.setProductId(request.getProductId());
         domainReq.setPage(request.getPage());
@@ -78,11 +85,16 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
-    public Uni<ApiResponsePaginationReviewDetail> findByMerchant(pb.review.ReviewQuery.FindAllReviewMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationReviewDetail> findByMerchant(
+            pb.review.ReviewQuery.FindAllReviewMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         FindAllReviewByMerchant domainReq = new FindAllReviewByMerchant();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setPage(request.getPage());
@@ -104,10 +116,11 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationReviewDeleteAt> findByActive(pb.review.ReviewQuery.FindAllReviewRequest request) {
         FindAllReview domainReq = new FindAllReview();
         domainReq.setPage(request.getPage());
@@ -116,7 +129,8 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
 
         return reviewQueryService.findActive(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationReviewDeleteAt.Builder builder = ApiResponsePaginationReviewDeleteAt.newBuilder()
+                    ApiResponsePaginationReviewDeleteAt.Builder builder = ApiResponsePaginationReviewDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -129,10 +143,11 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationReviewDeleteAt> findByTrashed(pb.review.ReviewQuery.FindAllReviewRequest request) {
         FindAllReview domainReq = new FindAllReview();
         domainReq.setPage(request.getPage());
@@ -141,7 +156,8 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
 
         return reviewQueryService.findTrashed(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationReviewDeleteAt.Builder builder = ApiResponsePaginationReviewDeleteAt.newBuilder()
+                    ApiResponsePaginationReviewDeleteAt.Builder builder = ApiResponsePaginationReviewDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -154,11 +170,15 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseReview> findById(FindByIdReviewRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewQueryService.findById(request.getId())
                 .map(apiResp -> {
                     ApiResponseReview.Builder builder = ApiResponseReview.newBuilder()
@@ -173,7 +193,7 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -213,7 +233,8 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
         if (r == null) {
             return pb.review.ReviewCommon.ReviewResponseDeleteAt.getDefaultInstance();
         }
-        pb.review.ReviewCommon.ReviewResponseDeleteAt.Builder builder = pb.review.ReviewCommon.ReviewResponseDeleteAt.newBuilder();
+        pb.review.ReviewCommon.ReviewResponseDeleteAt.Builder builder = pb.review.ReviewCommon.ReviewResponseDeleteAt
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId());
         }
@@ -248,7 +269,8 @@ public class ReviewQueryGrpcHandler extends MutinyReviewQueryServiceGrpc.ReviewQ
         if (r == null) {
             return pb.review.ReviewCommon.ReviewsDetailResponse.getDefaultInstance();
         }
-        pb.review.ReviewCommon.ReviewsDetailResponse.Builder builder = pb.review.ReviewCommon.ReviewsDetailResponse.newBuilder();
+        pb.review.ReviewCommon.ReviewsDetailResponse.Builder builder = pb.review.ReviewCommon.ReviewsDetailResponse
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId());
         }

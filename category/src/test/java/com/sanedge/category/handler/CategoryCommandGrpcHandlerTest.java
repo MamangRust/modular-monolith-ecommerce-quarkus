@@ -47,8 +47,6 @@ class CategoryCommandGrpcHandlerTest {
         field.set(target, service);
     }
 
-    // ========== CREATE CATEGORY HANDLER TESTS ==========
-
     @Test
     @DisplayName("create - should return success response when category created successfully")
     void create_Success() {
@@ -108,8 +106,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(exception).isNotNull();
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== UPDATE CATEGORY HANDLER TESTS ==========
 
     @Test
     @DisplayName("update - should return success response when category updated successfully")
@@ -173,8 +169,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== TRASH CATEGORY HANDLER TESTS ==========
-
     @Test
     @DisplayName("trashedCategory - should return success response when category trashed successfully")
     void trashedCategory_Success() {
@@ -227,8 +221,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== RESTORE CATEGORY HANDLER TESTS ==========
-
     @Test
     @DisplayName("restoreCategory - should return success response when category restored successfully")
     void restoreCategory_Success() {
@@ -277,8 +269,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== DELETE PERMANENT CATEGORY HANDLER TESTS ==========
-
     @Test
     @DisplayName("deleteCategoryPermanent - should return success when category deleted permanently")
     void deleteCategoryPermanent_Success() {
@@ -319,8 +309,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== RESTORE ALL CATEGORIES HANDLER TESTS ==========
-
     @Test
     @DisplayName("restoreAllCategory - should return success when all categories restored")
     void restoreAllCategory_Success() {
@@ -354,10 +342,8 @@ class CategoryCommandGrpcHandlerTest {
         }
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
+        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== DELETE ALL PERMANENT CATEGORIES HANDLER TESTS ==========
 
     @Test
     @DisplayName("deleteAllCategoryPermanent - should return success when all trashed categories deleted")
@@ -392,10 +378,8 @@ class CategoryCommandGrpcHandlerTest {
         }
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
+        assertThat(exception.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== REQUEST MAPPING TESTS ==========
 
     @Test
     @DisplayName("create - should correctly map request fields to domain object")
@@ -420,7 +404,7 @@ class CategoryCommandGrpcHandlerTest {
         when(categoryCommandService.createCategory(any(CreateCategoryRequest.class)))
                 .thenAnswer(invocation -> {
                     CreateCategoryRequest domainReq = invocation.getArgument(0);
-                    // Verify mapping
+
                     assertThat(domainReq.getName()).isEqualTo("Test Category");
                     assertThat(domainReq.getDescription()).isEqualTo("Test description");
                     assertThat(domainReq.getSlugCategory()).isEqualTo("test-category");
@@ -458,7 +442,7 @@ class CategoryCommandGrpcHandlerTest {
         when(categoryCommandService.updateCategory(any(UpdateCategoryRequest.class)))
                 .thenAnswer(invocation -> {
                     UpdateCategoryRequest domainReq = invocation.getArgument(0);
-                    // Verify mapping
+
                     assertThat(domainReq.getCategoryId()).isEqualTo(5);
                     assertThat(domainReq.getName()).isEqualTo("Updated Category");
                     assertThat(domainReq.getDescription()).isEqualTo("Updated description");
@@ -472,8 +456,6 @@ class CategoryCommandGrpcHandlerTest {
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("success");
     }
-
-    // ========== PROTO RESPONSE MAPPING TESTS ==========
 
     @Test
     @DisplayName("create - should correctly map null data in response")

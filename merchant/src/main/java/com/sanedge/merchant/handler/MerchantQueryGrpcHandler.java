@@ -5,8 +5,10 @@ import com.sanedge.merchant.domain.response.MerchantResponseDeleteAt;
 import com.sanedge.merchant.service.MerchantQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.merchant.MerchantCommon.ApiResponseMerchant;
@@ -14,6 +16,7 @@ import pb.merchant.MerchantCommon.ApiResponsePaginationMerchant;
 import pb.merchant.MerchantCommon.ApiResponsePaginationMerchantDeleteAt;
 import pb.merchant.MerchantQuery.FindAllMerchantRequest;
 import pb.merchant.MutinyMerchantQueryServiceGrpc;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -23,6 +26,7 @@ public class MerchantQueryGrpcHandler extends MutinyMerchantQueryServiceGrpc.Mer
     MerchantQueryService merchantQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchant> findAll(FindAllMerchantRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchants domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchants();
         domainReq.setPage(request.getPage());
@@ -44,11 +48,15 @@ public class MerchantQueryGrpcHandler extends MutinyMerchantQueryServiceGrpc.Mer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseMerchant> findById(pb.merchant.MerchantCommon.FindByIdMerchantRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchant.Builder builder = ApiResponseMerchant.newBuilder()
@@ -59,10 +67,11 @@ public class MerchantQueryGrpcHandler extends MutinyMerchantQueryServiceGrpc.Mer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantDeleteAt> findByActive(FindAllMerchantRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchants domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchants();
         domainReq.setPage(request.getPage());
@@ -85,10 +94,11 @@ public class MerchantQueryGrpcHandler extends MutinyMerchantQueryServiceGrpc.Mer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantDeleteAt> findByTrashed(FindAllMerchantRequest request) {
         com.sanedge.merchant.domain.requests.FindAllMerchants domainReq = new com.sanedge.merchant.domain.requests.FindAllMerchants();
         domainReq.setPage(request.getPage());
@@ -111,7 +121,7 @@ public class MerchantQueryGrpcHandler extends MutinyMerchantQueryServiceGrpc.Mer
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant.MerchantCommon.MerchantResponse toProto(MerchantResponse r) {

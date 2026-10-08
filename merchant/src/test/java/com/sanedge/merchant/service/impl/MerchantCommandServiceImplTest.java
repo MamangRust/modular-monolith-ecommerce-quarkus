@@ -2,6 +2,7 @@ package com.sanedge.merchant.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -17,7 +18,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
+import com.sanedge.common.adapter.model.User;
+import com.sanedge.common.adapter.user.UserPort;
 import com.sanedge.common.config.RedisService;
 import com.sanedge.common.domain.response.ApiResponse;
 import com.sanedge.common.enums.Status;
@@ -35,14 +39,12 @@ import com.sanedge.merchant.repository.MerchantQueryRepository;
 
 import io.opentelemetry.api.common.Attributes;
 import io.smallrye.mutiny.Uni;
-import pb.user.UserCommon;
-import pb.user.UserQueryService;
 
 @ExtendWith(MockitoExtension.class)
 class MerchantCommandServiceImplTest {
 
     @Mock
-    private UserQueryService userQueryService;
+    private UserPort userPort;
 
     @Mock
     private MerchantQueryRepository merchantQueryRepository;
@@ -61,24 +63,16 @@ class MerchantCommandServiceImplTest {
     @BeforeEach
     void setUp() {
         merchantCommandService = new MerchantCommandServiceImpl(
-                userQueryService,
+                userPort,
                 merchantQueryRepository,
                 merchantCommandRepository,
                 redisService,
                 tracingMetrics);
-
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
 
         lenient().when(redisService.deleteReactive(anyString()))
                 .thenReturn(Uni.createFrom().voidItem());
@@ -99,22 +93,9 @@ class MerchantCommandServiceImplTest {
         return merchant;
     }
 
-    private UserCommon.ApiResponseUser createMockUserResponse() {
-        UserCommon.UserResponse userResponse = UserCommon.UserResponse.newBuilder()
-                .setId(1)
-                .setFirstname("John")
-                .setLastname("Doe")
-                .setEmail("john.doe@example.com")
-                .build();
-
-        return UserCommon.ApiResponseUser.newBuilder()
-                .setStatus("success")
-                .setMessage("User found")
-                .setData(userResponse)
-                .build();
+    private User createMockUser() {
+        return new User(1, "John", "Doe", "john.doe@example.com", null, null, null);
     }
-
-    // ========== createMerchant Tests ==========
 
     @Test
     void createMerchant_success_createsNewMerchant() {
@@ -127,9 +108,8 @@ class MerchantCommandServiceImplTest {
         request.setContactPhone("081234567890");
         request.setStatus("PENDING");
 
-        lenient().when(userQueryService.findById(
-                UserCommon.FindByIdUserRequest.newBuilder().setId(1).build()))
-                .thenReturn(Uni.createFrom().item(createMockUserResponse()));
+        lenient().when(userPort.findById(anyInt()))
+                .thenReturn(Uni.createFrom().item(createMockUser()));
         lenient().when(merchantQueryRepository.existsByName("New Merchant"))
                 .thenReturn(Uni.createFrom().item(false));
         lenient().when(merchantCommandRepository.persist(any(Merchant.class)))
@@ -159,9 +139,8 @@ class MerchantCommandServiceImplTest {
         request.setContactPhone("081234567890");
         request.setStatus("PENDING");
 
-        lenient().when(userQueryService.findById(
-                UserCommon.FindByIdUserRequest.newBuilder().setId(1).build()))
-                .thenReturn(Uni.createFrom().item(createMockUserResponse()));
+        lenient().when(userPort.findById(anyInt()))
+                .thenReturn(Uni.createFrom().item(createMockUser()));
         when(merchantQueryRepository.existsByName("Existing Merchant"))
                 .thenReturn(Uni.createFrom().item(true));
 
@@ -184,14 +163,9 @@ class MerchantCommandServiceImplTest {
         request.setContactPhone("081234567890");
         request.setStatus("PENDING");
 
-        UserCommon.ApiResponseUser userResponse = UserCommon.ApiResponseUser.newBuilder()
-                .setStatus("error")
-                .setMessage("User not found")
-                .build();
-
-        when(userQueryService.findById(
-                UserCommon.FindByIdUserRequest.newBuilder().setId(999).build()))
-                .thenReturn(Uni.createFrom().item(userResponse));
+        when(userPort.findById(anyInt()))
+                .thenReturn(Uni.createFrom().failure(
+                        new ResourceNotFoundException("User not found")));
 
         try {
             merchantCommandService.createMerchant(request).await().indefinitely();
@@ -200,8 +174,6 @@ class MerchantCommandServiceImplTest {
             assertThat(e.getMessage()).contains("User not found");
         }
     }
-
-    // ========== updateMerchant Tests ==========
 
     @Test
     void updateMerchant_success_updatesMerchant() {
@@ -219,9 +191,8 @@ class MerchantCommandServiceImplTest {
 
         lenient().when(merchantQueryRepository.findMerchantById(1L))
                 .thenReturn(Uni.createFrom().item(existingMerchant));
-        lenient().when(userQueryService.findById(
-                UserCommon.FindByIdUserRequest.newBuilder().setId(1).build()))
-                .thenReturn(Uni.createFrom().item(createMockUserResponse()));
+        lenient().when(userPort.findById(anyInt()))
+                .thenReturn(Uni.createFrom().item(createMockUser()));
         lenient().when(merchantCommandRepository.persist(any(Merchant.class)))
                 .thenReturn(Uni.createFrom().item(existingMerchant));
 
@@ -257,8 +228,6 @@ class MerchantCommandServiceImplTest {
         }
     }
 
-    // ========== trashMerchant Tests ==========
-
     @Test
     void trashMerchant_success_trashesMerchant() {
         Merchant merchant = createMockMerchant(1, "Merchant to Trash", Status.PENDING);
@@ -288,8 +257,6 @@ class MerchantCommandServiceImplTest {
             assertThat(e.getMessage()).contains("Merchant not found");
         }
     }
-
-    // ========== restoreMerchant Tests ==========
 
     @Test
     void restoreMerchant_success_restoresMerchant() {
@@ -321,8 +288,6 @@ class MerchantCommandServiceImplTest {
         }
     }
 
-    // ========== deleteMerchant Tests ==========
-
     @Test
     void deleteMerchant_success_deletesMerchant() {
         Merchant deletedMerchant = createMockMerchant(1, "Deleted Merchant", Status.PENDING);
@@ -350,8 +315,6 @@ class MerchantCommandServiceImplTest {
         }
     }
 
-    // ========== restoreAll Tests ==========
-
     @Test
     void restoreAll_success_restoresAll() {
         lenient().when(merchantCommandRepository.restoreAllDeleted())
@@ -376,8 +339,6 @@ class MerchantCommandServiceImplTest {
         }
     }
 
-    // ========== deleteAll Tests ==========
-
     @Test
     void deleteAll_success_deletesAll() {
         lenient().when(merchantCommandRepository.deleteAllDeleted())
@@ -400,5 +361,24 @@ class MerchantCommandServiceImplTest {
         } catch (ResourceNotFoundException e) {
             assertThat(e.getMessage()).contains("No trashed merchants found");
         }
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

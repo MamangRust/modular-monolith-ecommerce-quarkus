@@ -7,6 +7,7 @@ import com.sanedge.merchant_policy.domain.response.MerchantPoliciesResponseDelet
 import com.sanedge.merchant_policy.service.MerchantPolicyCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -15,6 +16,7 @@ import pb.merchant_policy.MutinyMerchantPolicyCommandServiceGrpc;
 import pb.merchant_policy.MerchantPolicyCommon.ApiResponseMerchantPolicies;
 import pb.merchant_policy.MerchantPolicyCommon.ApiResponseMerchantPoliciesDeleteAt;
 import pb.merchant_policy.MerchantPolicyCommon.FindByIdMerchantPoliciesRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,6 +29,9 @@ public class MerchantPolicyCommandGrpcHandler
     @Override
     public Uni<ApiResponseMerchantPolicies> create(
             pb.merchant_policy.MerchantPolicyCommand.CreateMerchantPoliciesRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         CreateMerchantPolicyRequest domainReq = new CreateMerchantPolicyRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setPolicyType(request.getPolicyType());
@@ -43,12 +48,15 @@ public class MerchantPolicyCommandGrpcHandler
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseMerchantPolicies> update(
             pb.merchant_policy.MerchantPolicyCommand.UpdateMerchantPoliciesRequest request) {
+        if (request.getMerchantPolicyId() <= 0) {
+            return IdValidator.invalid("MerchantPolicy id");
+        }
         UpdateMerchantPolicyRequest domainReq = new UpdateMerchantPolicyRequest();
         domainReq.setMerchantPolicyId(request.getMerchantPolicyId());
         domainReq.setPolicyType(request.getPolicyType());
@@ -69,12 +77,15 @@ public class MerchantPolicyCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantPoliciesDeleteAt> trashedMerchantPolicies(FindByIdMerchantPoliciesRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantPolicyCommandService.trash((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantPoliciesDeleteAt.Builder builder = ApiResponseMerchantPoliciesDeleteAt
@@ -90,12 +101,15 @@ public class MerchantPolicyCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantPoliciesDeleteAt> restoreMerchantPolicies(FindByIdMerchantPoliciesRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantPolicyCommandService.restore((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantPoliciesDeleteAt.Builder builder = ApiResponseMerchantPoliciesDeleteAt
@@ -111,13 +125,16 @@ public class MerchantPolicyCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<pb.merchant.MerchantCommon.ApiResponseMerchantDelete> deleteMerchantPoliciesPermanent(
             FindByIdMerchantPoliciesRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantPolicyCommandService.delete((long) request.getId())
                 .map(apiResp -> pb.merchant.MerchantCommon.ApiResponseMerchantDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -127,7 +144,7 @@ public class MerchantPolicyCommandGrpcHandler
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -139,7 +156,7 @@ public class MerchantPolicyCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -150,7 +167,7 @@ public class MerchantPolicyCommandGrpcHandler
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_policy.MerchantPolicyCommon.MerchantPoliciesResponse toProto(MerchantPoliciesResponse r) {

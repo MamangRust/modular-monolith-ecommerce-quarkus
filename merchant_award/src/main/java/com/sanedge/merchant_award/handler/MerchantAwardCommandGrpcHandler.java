@@ -7,6 +7,7 @@ import com.sanedge.merchant_award.domain.response.MerchantAwardResponseDeleteAt;
 import com.sanedge.merchant_award.service.MerchantAwardCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -15,6 +16,7 @@ import pb.merchant_award.MutinyMerchantAwardCommandServiceGrpc;
 import pb.merchant_award.MerchantAwardCommon.ApiResponseMerchantAward;
 import pb.merchant_award.MerchantAwardCommon.ApiResponseMerchantAwardDeleteAt;
 import pb.merchant_award.MerchantAwardCommon.FindByIdMerchantAwardRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -25,6 +27,9 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
 
     @Override
     public Uni<ApiResponseMerchantAward> create(pb.merchant_award.MerchantAwardCommand.CreateMerchantAwardRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         CreateMerchantAwardRequest domainReq = new CreateMerchantAwardRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setTitle(request.getTitle());
@@ -44,11 +49,14 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseMerchantAward> update(pb.merchant_award.MerchantAwardCommand.UpdateMerchantAwardRequest request) {
+        if (request.getMerchantCertificationId() <= 0) {
+            return IdValidator.invalid("MerchantCertification id");
+        }
         UpdateMerchantAwardRequest domainReq = new UpdateMerchantAwardRequest();
         domainReq.setMerchantCertificationId(request.getMerchantCertificationId());
         domainReq.setTitle(request.getTitle());
@@ -72,12 +80,15 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantAwardDeleteAt> trashedMerchantAward(FindByIdMerchantAwardRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantAwardCommandService.trashedMerchantAward((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantAwardDeleteAt.Builder builder = ApiResponseMerchantAwardDeleteAt.newBuilder()
@@ -92,12 +103,15 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseMerchantAwardDeleteAt> restoreMerchantAward(FindByIdMerchantAwardRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantAwardCommandService.restoreMerchantAward((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantAwardDeleteAt.Builder builder = ApiResponseMerchantAwardDeleteAt.newBuilder()
@@ -112,12 +126,15 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<pb.merchant.MerchantCommon.ApiResponseMerchantDelete> deleteMerchantAwardPermanent(FindByIdMerchantAwardRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantAwardCommandService.deleteMerchantAwardPermanent((long) request.getId())
                 .map(apiResp -> pb.merchant.MerchantCommon.ApiResponseMerchantDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -127,7 +144,7 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -138,7 +155,7 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -148,7 +165,7 @@ public class MerchantAwardCommandGrpcHandler extends MutinyMerchantAwardCommandS
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse toProto(MerchantAwardResponse r) {

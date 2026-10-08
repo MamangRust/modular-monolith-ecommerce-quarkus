@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import java.lang.reflect.Field;
 import java.sql.Timestamp;
@@ -48,12 +49,12 @@ class SliderQueryServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(2)).get());
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(3)).get());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
 
-        // NOTE: Slider constructor order is (repo, redis, tracing, objectMapper) — different from other modules
         service = new SliderQueryServiceImpl(
                 sliderQueryRepository,
                 redisService,
@@ -64,10 +65,12 @@ class SliderQueryServiceImplTest {
     private Slider mkSlider(Long id) {
         Slider s = new Slider();
         try {
-            Field idField = s.getClass().getSuperclass().getSuperclass().getDeclaredField("id");
+            Field idField = s.getClass().getDeclaredField("id");
             idField.setAccessible(true);
             idField.set(s, id);
-        } catch (Exception e) { throw new RuntimeException(e); }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         s.setName("Promo");
         s.setCreatedAt(Timestamp.valueOf(LocalDateTime.now()));
         s.setUpdatedAt(Timestamp.valueOf(LocalDateTime.now()));
@@ -100,8 +103,27 @@ class SliderQueryServiceImplTest {
                 .thenReturn(Uni.createFrom().item(new PagedResult<>(List.of(), 0)));
         when(redisService.setWithExpirationReactive(anyString(), anyString(), anyLong()))
                 .thenReturn(Uni.createFrom().voidItem());
-        ApiResponsePagination<List<com.sanedge.slider.domain.response.SliderResponse>> result =
-                service.findAll(req).await().indefinitely();
+        ApiResponsePagination<List<com.sanedge.slider.domain.response.SliderResponse>> result = service.findAll(req)
+                .await().indefinitely();
         assertThat(result.status()).isEqualTo("success");
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

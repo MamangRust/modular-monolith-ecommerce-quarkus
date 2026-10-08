@@ -2,12 +2,14 @@ package com.sanedge.transaction.handler;
 
 import java.util.stream.Collectors;
 
-import com.sanedge.transaction.domain.requests.MonthAmountTransactionMerchant;
+import com.sanedge.transaction.domain.requests.FindMonthlyAmountByMerchantRequest;
 import com.sanedge.transaction.domain.requests.YearAmountTransactionMerchant;
 import com.sanedge.transaction.service.statsbymerchant.TransactionAmountByMerchantService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -22,18 +24,21 @@ import pb.transaction.TransactionCommon.TransactionYearlyAmountFailed;
 import pb.transaction.TransactionCommon.TransactionYearlyAmountSuccess;
 import pb.transaction.stats.TransactionAmount.MonthAmountTransactionMerchantRequest;
 import pb.transaction.stats.TransactionAmount.YearAmountTransactionMerchantRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
 public class TransactionAmountByMerchantGrpcHandler extends MutinyTransactionAmountByMerchantServiceGrpc.TransactionAmountByMerchantServiceImplBase {
 
     @Inject
-    TransactionAmountByMerchantService transactionAmountByMerchantService;
-
-    @Override
-    public Uni<ApiResponseTransactionMonthAmountSuccess> getMonthlyAmountSuccessByMerchant(MonthAmountTransactionMerchantRequest request) {
-        MonthAmountTransactionMerchant domainReq = new MonthAmountTransactionMerchant();
-        domainReq.setMerchantId(request.getMerchantId());
+    TransactionAmountByMerchantService transactionAmountByMerchantService;        @Override
+        @WithSession
+        public Uni<ApiResponseTransactionMonthAmountSuccess> getMonthlyAmountSuccessByMerchant(MonthAmountTransactionMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        FindMonthlyAmountByMerchantRequest domainReq = new FindMonthlyAmountByMerchantRequest();
+        domainReq.setMerchantId((long) request.getMerchantId());
         domainReq.setYear(request.getYear());
         domainReq.setMonth(request.getMonth());
 
@@ -52,11 +57,13 @@ public class TransactionAmountByMerchantGrpcHandler extends MutinyTransactionAmo
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
-    }
-
-    @Override
-    public Uni<ApiResponseTransactionYearAmountSuccess> getYearlyAmountSuccessByMerchant(YearAmountTransactionMerchantRequest request) {
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
+    }        @Override
+        @WithSession
+        public Uni<ApiResponseTransactionYearAmountSuccess> getYearlyAmountSuccessByMerchant(YearAmountTransactionMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         YearAmountTransactionMerchant domainReq = new YearAmountTransactionMerchant();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setYear(request.getYear());
@@ -75,13 +82,15 @@ public class TransactionAmountByMerchantGrpcHandler extends MutinyTransactionAmo
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
-    }
-
-    @Override
-    public Uni<ApiResponseTransactionMonthAmountFailed> getMonthlyAmountFailedByMerchant(MonthAmountTransactionMerchantRequest request) {
-        MonthAmountTransactionMerchant domainReq = new MonthAmountTransactionMerchant();
-        domainReq.setMerchantId(request.getMerchantId());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
+    }        @Override
+        @WithSession
+        public Uni<ApiResponseTransactionMonthAmountFailed> getMonthlyAmountFailedByMerchant(MonthAmountTransactionMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        FindMonthlyAmountByMerchantRequest domainReq = new FindMonthlyAmountByMerchantRequest();
+        domainReq.setMerchantId((long) request.getMerchantId());
         domainReq.setYear(request.getYear());
         domainReq.setMonth(request.getMonth());
 
@@ -100,11 +109,13 @@ public class TransactionAmountByMerchantGrpcHandler extends MutinyTransactionAmo
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
-    }
-
-    @Override
-    public Uni<ApiResponseTransactionYearAmountFailed> getYearlyAmountFailedByMerchant(YearAmountTransactionMerchantRequest request) {
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
+    }        @Override
+        @WithSession
+        public Uni<ApiResponseTransactionYearAmountFailed> getYearlyAmountFailedByMerchant(YearAmountTransactionMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         YearAmountTransactionMerchant domainReq = new YearAmountTransactionMerchant();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setYear(request.getYear());
@@ -123,6 +134,6 @@ public class TransactionAmountByMerchantGrpcHandler extends MutinyTransactionAmo
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

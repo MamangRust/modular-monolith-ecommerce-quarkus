@@ -7,6 +7,7 @@ import com.sanedge.banner.domain.response.BannerResponseDeleteAt;
 import com.sanedge.banner.service.BannerCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import pb.banner.BannerCommon.ApiResponseBannerAll;
 import pb.banner.BannerCommon.ApiResponseBannerDelete;
 import pb.banner.BannerCommon.ApiResponseBannerDeleteAt;
 import pb.banner.BannerCommon.FindByIdBannerRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -49,12 +51,15 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                     if (e instanceof com.sanedge.common.exception.ResourceAlreadyExistsException) {
                         return Status.ALREADY_EXISTS.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseBanner> update(pb.banner.BannerCommand.UpdateBannerRequest request) {
+        if (request.getBannerId() <= 0) {
+            return IdValidator.invalid("Banner id");
+        }
         UpdateBannerRequest domainReq = new UpdateBannerRequest();
         domainReq.setId((long) request.getBannerId());
         domainReq.setName(request.getName());
@@ -78,12 +83,15 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseBannerDeleteAt> trash(FindByIdBannerRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return bannerCommandService.trashedBanner((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseBannerDeleteAt.Builder builder = ApiResponseBannerDeleteAt.newBuilder()
@@ -98,12 +106,15 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseBannerDeleteAt> restore(FindByIdBannerRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return bannerCommandService.restoreBanner((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseBannerDeleteAt.Builder builder = ApiResponseBannerDeleteAt.newBuilder()
@@ -118,12 +129,15 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseBannerDelete> deletePermanent(FindByIdBannerRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return bannerCommandService.deleteBannerPermanent((long) request.getId())
                 .map(apiResp -> ApiResponseBannerDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -133,7 +147,7 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -144,7 +158,7 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -154,7 +168,7 @@ public class BannerCommandGrpcHandler extends MutinyBannerCommandServiceGrpc.Ban
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.banner.BannerCommon.BannerResponse toProto(BannerResponse r) {

@@ -53,13 +53,15 @@ class CategoryTotalPriceServiceTest {
     void setUp() {
         service = new CategoryTotalPriceServiceImpl(categoryTotalPriceRepository, redisService, objectMapper,
                 tracingMetrics);
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private CategoriesMonthlyTotalPrice createMonthlyTotal() {
@@ -69,8 +71,6 @@ class CategoryTotalPriceServiceTest {
     private CategoriesYearlyTotalPrice createYearlyTotal() {
         return new CategoriesYearlyTotalPrice("2024", 12000L);
     }
-
-    // ========== findMonthlyTotalPrice Tests ==========
 
     @Test
     void findMonthlyTotalPrice_nullYear_throwsResourceNotFoundException() {
@@ -118,8 +118,6 @@ class CategoryTotalPriceServiceTest {
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findYearlyTotalPrice Tests ==========
 
     @Test
     void findYearlyTotalPrice_cacheMiss_returnsFromDb() {

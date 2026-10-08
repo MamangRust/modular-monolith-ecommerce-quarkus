@@ -13,7 +13,7 @@ public interface MerchantAwardCommandService {
     Uni<ApiResponse<MerchantAwardResponse>> updateMerchantAward(UpdateMerchantAwardRequest req);
     Uni<ApiResponse<MerchantAwardResponseDeleteAt>> trashedMerchantAward(Long merchantAwardId);
     Uni<ApiResponse<MerchantAwardResponseDeleteAt>> restoreMerchantAward(Long merchantAwardId);
-    Uni<ApiResponse<Boolean>> deleteMerchantAwardPermanent(Long merchantAwardId);
-    Uni<ApiResponse<Boolean>> restoreAllMerchantAward();
-    Uni<ApiResponse<Boolean>> deleteAllMerchantAwardPermanent();
+    Uni<ApiResponse<Void>> deleteMerchantAwardPermanent(Long merchantAwardId);
+    Uni<ApiResponse<Void>> restoreAllMerchantAward();
+    Uni<ApiResponse<Void>> deleteAllMerchantAwardPermanent();
 }

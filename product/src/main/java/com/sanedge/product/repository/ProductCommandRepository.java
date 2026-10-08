@@ -37,13 +37,26 @@ public class ProductCommandRepository implements PanacheRepository<Product> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long productId) {
+    public Uni<Product> adjustStock(Long productId, Integer delta) {
+        if (delta == null || delta == 0) {
+            return find("id = ?1 AND deletedAt IS NULL", productId).firstResult();
+        }
+
+        return update("countInStock = countInStock + ?1 "
+                + "WHERE id = ?2 AND deletedAt IS NULL AND countInStock + ?1 >= 0", delta, productId)
+                .chain(updated -> updated == 0
+                        ? Uni.createFrom().nullItem()
+                        : find("id = ?1 AND deletedAt IS NULL", productId).firstResult());
+    }
+
+    @WithTransaction
+    public Uni<Product> deletePermanent(Long productId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", productId).firstResult()
                 .chain(product -> {
                     if (product != null) {
-                        return delete(product).map(v -> true);
+                        return delete(product).map(v -> product);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

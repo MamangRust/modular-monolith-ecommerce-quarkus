@@ -16,7 +16,6 @@ import com.sanedge.transaction.domain.response.TransactionMonthlyMethodResponse;
 import com.sanedge.transaction.domain.response.TransactionYearlyMethodResponse;
 import com.sanedge.transaction.service.stats.TransactionMethodService;
 
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.smallrye.mutiny.Uni;
 import pb.transaction.TransactionCommon;
@@ -25,124 +24,121 @@ import pb.transaction.stats.TransactionMethod;
 @ExtendWith(MockitoExtension.class)
 class TransactionMethodGrpcHandlerTest {
 
-    @Mock
-    private TransactionMethodService transactionMethodService;
+        @Mock
+        private TransactionMethodService transactionMethodService;
 
-    private TransactionMethodGrpcHandler handler;
+        private TransactionMethodGrpcHandler handler;
 
-    @BeforeEach
-    void setUp() {
-        handler = new TransactionMethodGrpcHandler();
-        handler.transactionMethodService = transactionMethodService;
-    }
-
-    // ========== getMonthlyTransactionMethodSuccess Tests ==========
-
-    @Test
-    @DisplayName("getMonthlyTransactionMethodSuccess - should return response on success")
-    void getMonthlyTransactionMethodSuccess_Success() {
-        TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
-
-        TransactionMonthlyMethodResponse data = TransactionMonthlyMethodResponse.builder()
-                .month("Jan").paymentMethod("Credit Card").totalTransactions(10L).totalAmount(100000L).build();
-        ApiResponse<java.util.List<TransactionMonthlyMethodResponse>> apiResp = ApiResponse
-                .success("Monthly method success retrieved successfully", java.util.List.of(data));
-
-        when(transactionMethodService.findMonthlyMethodSuccess(any())).thenReturn(Uni.createFrom().item(apiResp));
-
-        TransactionCommon.ApiResponseTransactionMonthPaymentMethod response = handler
-                .getMonthlyTransactionMethodSuccess(request).await().indefinitely();
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("getMonthlyTransactionMethodSuccess - should return INTERNAL on failure")
-    void getMonthlyTransactionMethodSuccess_InternalError() {
-        TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
-
-        when(transactionMethodService.findMonthlyMethodSuccess(any()))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB error")));
-
-        StatusRuntimeException ex = null;
-        try {
-            handler.getMonthlyTransactionMethodSuccess(request).await().indefinitely();
-        } catch (StatusRuntimeException e) {
-            ex = e;
+        @BeforeEach
+        void setUp() {
+                handler = new TransactionMethodGrpcHandler();
+                handler.transactionMethodService = transactionMethodService;
         }
 
-        assertThat(ex).isNotNull();
-        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
-    }
+        @Test
+        @DisplayName("getMonthlyTransactionMethodSuccess - should return response on success")
+        void getMonthlyTransactionMethodSuccess_Success() {
+                TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-    // ========== getYearlyTransactionMethodSuccess Tests ==========
+                TransactionMonthlyMethodResponse data = TransactionMonthlyMethodResponse.builder()
+                                .month("Jan").paymentMethod("Credit Card").totalTransactions(10L).totalAmount(100000L)
+                                .build();
+                ApiResponse<java.util.List<TransactionMonthlyMethodResponse>> apiResp = ApiResponse
+                                .success("Monthly method success retrieved successfully", java.util.List.of(data));
 
-    @Test
-    @DisplayName("getYearlyTransactionMethodSuccess - should return response on success")
-    void getYearlyTransactionMethodSuccess_Success() {
-        TransactionMethod.YearMethodTransactionRequest request = TransactionMethod.YearMethodTransactionRequest
-                .newBuilder().setYear(2024).build();
+                when(transactionMethodService.findMonthlyMethodSuccess(any()))
+                                .thenReturn(Uni.createFrom().item(apiResp));
 
-        TransactionYearlyMethodResponse data = TransactionYearlyMethodResponse.builder()
-                .year("2024").paymentMethod("Credit Card").totalTransactions(100L).totalAmount(1000000L).build();
-        ApiResponse<java.util.List<TransactionYearlyMethodResponse>> apiResp = ApiResponse
-                .success("Yearly method success retrieved successfully", java.util.List.of(data));
+                TransactionCommon.ApiResponseTransactionMonthPaymentMethod response = handler
+                                .getMonthlyTransactionMethodSuccess(request).await().indefinitely();
 
-        when(transactionMethodService.findYearlyMethodSuccess(2024)).thenReturn(Uni.createFrom().item(apiResp));
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
 
-        TransactionCommon.ApiResponseTransactionYearPaymentmethod response = handler
-                .getYearlyTransactionMethodSuccess(request).await().indefinitely();
+        @Test
+        @DisplayName("getMonthlyTransactionMethodSuccess - should return INTERNAL on failure")
+        void getMonthlyTransactionMethodSuccess_InternalError() {
+                TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-        assertThat(response.getDataCount()).isEqualTo(1);
-    }
+                when(transactionMethodService.findMonthlyMethodSuccess(any()))
+                                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB error")));
 
-    // ========== getMonthlyTransactionMethodFailed Tests ==========
+                StatusRuntimeException ex = null;
+                try {
+                        handler.getMonthlyTransactionMethodSuccess(request).await().indefinitely();
+                } catch (StatusRuntimeException e) {
+                        ex = e;
+                }
 
-    @Test
-    @DisplayName("getMonthlyTransactionMethodFailed - should return response on success")
-    void getMonthlyTransactionMethodFailed_Success() {
-        TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
-                .newBuilder().setYear(2024).setMonth(1).build();
+                assertThat(ex).isNotNull();
+        }
 
-        TransactionMonthlyMethodResponse data = TransactionMonthlyMethodResponse.builder()
-                .month("Jan").paymentMethod("Debit Card").totalTransactions(3L).totalAmount(30000L).build();
-        ApiResponse<java.util.List<TransactionMonthlyMethodResponse>> apiResp = ApiResponse
-                .success("Monthly method failed retrieved successfully", java.util.List.of(data));
+        @Test
+        @DisplayName("getYearlyTransactionMethodSuccess - should return response on success")
+        void getYearlyTransactionMethodSuccess_Success() {
+                TransactionMethod.YearMethodTransactionRequest request = TransactionMethod.YearMethodTransactionRequest
+                                .newBuilder().setYear(2024).build();
 
-        when(transactionMethodService.findMonthlyMethodFailed(any())).thenReturn(Uni.createFrom().item(apiResp));
+                TransactionYearlyMethodResponse data = TransactionYearlyMethodResponse.builder()
+                                .year("2024").paymentMethod("Credit Card").totalTransactions(100L).totalAmount(1000000L)
+                                .build();
+                ApiResponse<java.util.List<TransactionYearlyMethodResponse>> apiResp = ApiResponse
+                                .success("Yearly method success retrieved successfully", java.util.List.of(data));
 
-        TransactionCommon.ApiResponseTransactionMonthPaymentMethod response = handler
-                .getMonthlyTransactionMethodFailed(request).await().indefinitely();
+                when(transactionMethodService.findYearlyMethodSuccess(2024)).thenReturn(Uni.createFrom().item(apiResp));
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-    }
+                TransactionCommon.ApiResponseTransactionYearPaymentmethod response = handler
+                                .getYearlyTransactionMethodSuccess(request).await().indefinitely();
 
-    // ========== getYearlyTransactionMethodFailed Tests ==========
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+                assertThat(response.getDataCount()).isEqualTo(1);
+        }
 
-    @Test
-    @DisplayName("getYearlyTransactionMethodFailed - should return response on success")
-    void getYearlyTransactionMethodFailed_Success() {
-        TransactionMethod.YearMethodTransactionRequest request = TransactionMethod.YearMethodTransactionRequest
-                .newBuilder().setYear(2024).build();
+        @Test
+        @DisplayName("getMonthlyTransactionMethodFailed - should return response on success")
+        void getMonthlyTransactionMethodFailed_Success() {
+                TransactionMethod.MonthMethodTransactionRequest request = TransactionMethod.MonthMethodTransactionRequest
+                                .newBuilder().setYear(2024).setMonth(1).build();
 
-        TransactionYearlyMethodResponse data = TransactionYearlyMethodResponse.builder()
-                .year("2024").paymentMethod("Debit Card").totalTransactions(20L).totalAmount(200000L).build();
-        ApiResponse<java.util.List<TransactionYearlyMethodResponse>> apiResp = ApiResponse
-                .success("Yearly method failed retrieved successfully", java.util.List.of(data));
+                TransactionMonthlyMethodResponse data = TransactionMonthlyMethodResponse.builder()
+                                .month("Jan").paymentMethod("Debit Card").totalTransactions(3L).totalAmount(30000L)
+                                .build();
+                ApiResponse<java.util.List<TransactionMonthlyMethodResponse>> apiResp = ApiResponse
+                                .success("Monthly method failed retrieved successfully", java.util.List.of(data));
 
-        when(transactionMethodService.findYearlyMethodFailed(2024)).thenReturn(Uni.createFrom().item(apiResp));
+                when(transactionMethodService.findMonthlyMethodFailed(any()))
+                                .thenReturn(Uni.createFrom().item(apiResp));
 
-        TransactionCommon.ApiResponseTransactionYearPaymentmethod response = handler
-                .getYearlyTransactionMethodFailed(request).await().indefinitely();
+                TransactionCommon.ApiResponseTransactionMonthPaymentMethod response = handler
+                                .getMonthlyTransactionMethodFailed(request).await().indefinitely();
 
-        assertThat(response).isNotNull();
-        assertThat(response.getStatus()).isEqualTo("success");
-    }
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+        }
+
+        @Test
+        @DisplayName("getYearlyTransactionMethodFailed - should return response on success")
+        void getYearlyTransactionMethodFailed_Success() {
+                TransactionMethod.YearMethodTransactionRequest request = TransactionMethod.YearMethodTransactionRequest
+                                .newBuilder().setYear(2024).build();
+
+                TransactionYearlyMethodResponse data = TransactionYearlyMethodResponse.builder()
+                                .year("2024").paymentMethod("Debit Card").totalTransactions(20L).totalAmount(200000L)
+                                .build();
+                ApiResponse<java.util.List<TransactionYearlyMethodResponse>> apiResp = ApiResponse
+                                .success("Yearly method failed retrieved successfully", java.util.List.of(data));
+
+                when(transactionMethodService.findYearlyMethodFailed(2024)).thenReturn(Uni.createFrom().item(apiResp));
+
+                TransactionCommon.ApiResponseTransactionYearPaymentmethod response = handler
+                                .getYearlyTransactionMethodFailed(request).await().indefinitely();
+
+                assertThat(response).isNotNull();
+                assertThat(response.getStatus()).isEqualTo("success");
+        }
 }

@@ -17,10 +17,10 @@ public class MerchantDetailServiceImpl implements MerchantDetailService {
     @Inject
     TelemetryHelper telemetryHelper;
 
-    @GrpcClient("merchant")
+    @GrpcClient("merchant_detail")
     pb.merchant_detail.MutinyMerchantDetailQueryServiceGrpc.MutinyMerchantDetailQueryServiceStub merchantDetailQueryService;
 
-    @GrpcClient("merchant")
+    @GrpcClient("merchant_detail")
     pb.merchant_detail.MutinyMerchantDetailCommandServiceGrpc.MutinyMerchantDetailCommandServiceStub merchantDetailCommandService;
 
     @Override

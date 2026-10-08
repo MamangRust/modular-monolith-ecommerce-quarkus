@@ -20,17 +20,9 @@ import com.sanedge.banner.domain.response.BannerResponse;
 import com.sanedge.banner.domain.response.BannerResponseDeleteAt;
 import com.sanedge.banner.repository.BannerQueryRepository;
 import com.sanedge.banner.service.BannerQueryService;
+import com.sanedge.common.observability.TracingMetrics;
 
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -40,35 +32,20 @@ import jakarta.ws.rs.NotFoundException;
 public class BannerQueryServiceImpl implements BannerQueryService {
         private static final Logger logger = LoggerFactory.getLogger(BannerQueryServiceImpl.class);
 
-        BannerQueryRepository bannerQueryRepository;
-        OpenTelemetry openTelemetry;
-        RedisService redisService;
-
-        private final Tracer tracer;
-        private final LongCounter requestsTotal;
-        private final DoubleHistogram requestDurationSeconds;
-
+        private final BannerQueryRepository bannerQueryRepository;
+        private final RedisService redisService;
         private final ObjectMapper objectMapper;
+        private final TracingMetrics tracingMetrics;
 
         private static final long LIST_CACHE_TTL_SECONDS = 300;
 
         @Inject
-        public BannerQueryServiceImpl(BannerQueryRepository bannerQueryRepository, OpenTelemetry openTelemetry, RedisService redisService,
-                        ObjectMapper objectMapper) {
+        public BannerQueryServiceImpl(BannerQueryRepository bannerQueryRepository, RedisService redisService,
+                        ObjectMapper objectMapper, TracingMetrics tracingMetrics) {
                 this.bannerQueryRepository = bannerQueryRepository;
-                this.openTelemetry = openTelemetry;
                 this.redisService = redisService;
                 this.objectMapper = objectMapper;
-                this.tracer = openTelemetry.getTracer("banner-query-service", "1.0.0");
-                Meter meter = openTelemetry.getMeter("banner-query-service");
-
-                this.requestsTotal = meter.counterBuilder("requests_total")
-                                .setDescription("Total number of requests")
-                                .build();
-                this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                                .setDescription("Request duration in seconds")
-                                .setUnit("s")
-                                .build();
+                this.tracingMetrics = tracingMetrics;
         }
 
         private String toJson(Object obj) {
@@ -77,15 +54,6 @@ public class BannerQueryServiceImpl implements BannerQueryService {
                 } catch (JsonProcessingException e) {
                         logger.error("Error serializing object to JSON", e);
                         throw new RuntimeException("Failed to serialize object", e);
-                }
-        }
-
-        private <T> T fromJson(String json, Class<T> clazz) {
-                try {
-                        return objectMapper.readValue(json, clazz);
-                } catch (JsonProcessingException e) {
-                        logger.error("Error deserializing JSON to object", e);
-                        throw new RuntimeException("Failed to deserialize JSON", e);
                 }
         }
 
@@ -98,285 +66,205 @@ public class BannerQueryServiceImpl implements BannerQueryService {
                 }
         }
 
+        private <T> T fromJson(String json, Class<T> clazz) {
+                try {
+                        return objectMapper.readValue(json, clazz);
+                } catch (JsonProcessingException e) {
+                        logger.error("Error deserializing JSON to object", e);
+                        throw new RuntimeException("Failed to deserialize JSON", e);
+                }
+        }
+
         @Override
         public Uni<ApiResponsePagination<List<BannerResponse>>> findAllPaginated(FindAllBannerRequest request) {
                 String cacheKey = String.format("banners:all:%d:%d:%s", request.getPage(), request.getPageSize(),
                                 request.getSearch());
 
+                Attributes attrs = Attributes.builder()
+                                .put("banner.page", request.getPage())
+                                .put("banner.size", request.getPageSize())
+                                .build();
+
                 return redisService.getReactive(cacheKey)
                                 .chain(cachedJson -> {
-                                         if (cachedJson != null) {
-                                                 logger.info("Cache HIT for key: {}", cacheKey);
-                                                 ApiResponsePagination<List<BannerResponse>> response = fromJson(cachedJson,
-                                                                 new TypeReference<ApiResponsePagination<List<BannerResponse>>>() {
-                                                                 });
-                                                 return Uni.createFrom().item(response);
-                                         }
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<BannerResponse>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<BannerResponse>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                                         logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                                         long startTime = System.currentTimeMillis();
-                                         Span span = tracer.spanBuilder("findAllBanners")
-                                                         .setSpanKind(SpanKind.SERVER)
-                                                         .setAttribute("service.name", "banner-service")
-                                                         .setAttribute("operation", "find_all_banners")
-                                                         .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findAllBanners", "find_all_banners",
+                                                        attrs, () -> bannerQueryRepository.findBanners(request)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<BannerResponse>> response = buildPaginatedResponse(
+                                                                                                pagedResult, request,
+                                                                                                "Banners retrieved successfully",
+                                                                                                BannerResponse::from);
 
-                                         int page = request.getPage() > 0 ? request.getPage() - 1 : 0;
-                                         int size = request.getPageSize() > 0 ? request.getPageSize() : 10;
-                                         String search = (request.getSearch() != null && !request.getSearch().isEmpty()) ? request.getSearch() : "";
-
-                                         return bannerQueryRepository.findBanners(search, page, size)
-                                                         .chain(pagedResult -> {
-                                                                 span.setAttribute("banner.count", pagedResult.getTotalRecords());
-                                                                 span.setAttribute("banner.page", request.getPage());
-                                                                 span.setAttribute("banner.size", request.getPageSize());
-
-                                                                 ApiResponsePagination<List<BannerResponse>> response = buildPaginatedResponse(
-                                                                                 pagedResult, request, "Banners retrieved successfully",
-                                                                                 BannerResponse::from);
-
-                                                                 return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                                                                 .map(v -> {
-                                                                                         logger.info("Cached response for key: {}", cacheKey);
-                                                                                         logger.info("Successfully retrieved {} banners", pagedResult.getTotalRecords());
-                                                                                         span.setStatus(StatusCode.OK);
-
-                                                                                         requestsTotal.add(1, Attributes.of(
-                                                                                                         AttributeKey.stringKey("operation"), "find_all_banners",
-                                                                                                         AttributeKey.stringKey("status"), "success"));
-                                                                                         return response;
-                                                                                 });
-                                                         })
-                                                         .onFailure().invoke(e -> {
-                                                                 logger.error("Error finding all banners", e);
-                                                                 span.recordException(e);
-                                                                 span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                                                 requestsTotal.add(1, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_all_banners",
-                                                                                 AttributeKey.stringKey("status"), "failed",
-                                                                                 AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                                                         })
-                                                         .eventually(() -> {
-                                                                 span.end();
-                                                                 double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                                                 requestDurationSeconds.record(duration, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_all_banners"));
-                                                                 logger.debug("Find all banners operation completed in {} seconds", duration);
-                                                         });
-                                 });
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} banners",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
         }
 
         @Override
-        public Uni<ApiResponsePagination<List<BannerResponseDeleteAt>>> findActivePaginated(FindAllBannerRequest request) {
+        public Uni<ApiResponsePagination<List<BannerResponseDeleteAt>>> findActivePaginated(
+                        FindAllBannerRequest request) {
                 String cacheKey = String.format("banners:active:%d:%d:%s", request.getPage(), request.getPageSize(),
                                 request.getSearch());
 
+                Attributes attrs = Attributes.builder()
+                                .put("banner.page", request.getPage())
+                                .put("banner.size", request.getPageSize())
+                                .build();
+
                 return redisService.getReactive(cacheKey)
                                 .chain(cachedJson -> {
-                                         if (cachedJson != null) {
-                                                 logger.info("Cache HIT for key: {}", cacheKey);
-                                                 ApiResponsePagination<List<BannerResponseDeleteAt>> response = fromJson(cachedJson,
-                                                                 new TypeReference<ApiResponsePagination<List<BannerResponseDeleteAt>>>() {
-                                                                 });
-                                                 return Uni.createFrom().item(response);
-                                         }
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<BannerResponseDeleteAt>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<BannerResponseDeleteAt>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                                         logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                                         long startTime = System.currentTimeMillis();
-                                         Span span = tracer.spanBuilder("findActiveBanners")
-                                                         .setSpanKind(SpanKind.SERVER)
-                                                         .setAttribute("service.name", "banner-service")
-                                                         .setAttribute("operation", "find_active_banners")
-                                                         .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findActiveBanners",
+                                                        "find_active_banners", attrs,
+                                                        () -> bannerQueryRepository.findActiveBanners(request)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<BannerResponseDeleteAt>> response = buildPaginatedResponse(
+                                                                                                pagedResult, request,
+                                                                                                "Active banners retrieved successfully",
+                                                                                                BannerResponseDeleteAt::from);
 
-                                         int page = request.getPage() > 0 ? request.getPage() - 1 : 0;
-                                         int size = request.getPageSize() > 0 ? request.getPageSize() : 10;
-                                         String search = (request.getSearch() != null && !request.getSearch().isEmpty()) ? request.getSearch() : "";
-
-                                         return bannerQueryRepository.findActiveBanners(search, page, size)
-                                                         .chain(pagedResult -> {
-                                                                 span.setAttribute("banner.count", pagedResult.getTotalRecords());
-                                                                 span.setAttribute("banner.page", request.getPage());
-                                                                 span.setAttribute("banner.size", request.getPageSize());
-
-                                                                 ApiResponsePagination<List<BannerResponseDeleteAt>> response = buildPaginatedResponse(
-                                                                                 pagedResult, request, "Active banners retrieved successfully",
-                                                                                 BannerResponseDeleteAt::from);
-
-                                                                 return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                                                                 .map(v -> {
-                                                                                         logger.info("Cached response for key: {}", cacheKey);
-                                                                                         logger.info("Successfully retrieved {} active banners", pagedResult.getTotalRecords());
-                                                                                         span.setStatus(StatusCode.OK);
-
-                                                                                         requestsTotal.add(1, Attributes.of(
-                                                                                                         AttributeKey.stringKey("operation"), "find_active_banners",
-                                                                                                         AttributeKey.stringKey("status"), "success"));
-                                                                                         return response;
-                                                                                 });
-                                                         })
-                                                         .onFailure().invoke(e -> {
-                                                                 logger.error("Error finding active banners", e);
-                                                                 span.recordException(e);
-                                                                 span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                                                 requestsTotal.add(1, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_active_banners",
-                                                                                 AttributeKey.stringKey("status"), "failed",
-                                                                                 AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                                                         })
-                                                         .eventually(() -> {
-                                                                 span.end();
-                                                                 double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                                                 requestDurationSeconds.record(duration, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_active_banners"));
-                                                                 logger.debug("Find active banners operation completed in {} seconds", duration);
-                                                         });
-                                 });
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} active banners",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
         }
 
         @Override
-        public Uni<ApiResponsePagination<List<BannerResponseDeleteAt>>> findTrashedPaginated(FindAllBannerRequest request) {
+        public Uni<ApiResponsePagination<List<BannerResponseDeleteAt>>> findTrashedPaginated(
+                        FindAllBannerRequest request) {
                 String cacheKey = String.format("banners:trashed:%d:%d:%s", request.getPage(), request.getPageSize(),
                                 request.getSearch());
 
+                Attributes attrs = Attributes.builder()
+                                .put("banner.page", request.getPage())
+                                .put("banner.size", request.getPageSize())
+                                .build();
+
                 return redisService.getReactive(cacheKey)
                                 .chain(cachedJson -> {
-                                         if (cachedJson != null) {
-                                                 logger.info("Cache HIT for key: {}", cacheKey);
-                                                 ApiResponsePagination<List<BannerResponseDeleteAt>> response = fromJson(cachedJson,
-                                                                 new TypeReference<ApiResponsePagination<List<BannerResponseDeleteAt>>>() {
-                                                                 });
-                                                 return Uni.createFrom().item(response);
-                                         }
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                ApiResponsePagination<List<BannerResponseDeleteAt>> response = fromJson(
+                                                                cachedJson,
+                                                                new TypeReference<ApiResponsePagination<List<BannerResponseDeleteAt>>>() {
+                                                                });
+                                                return Uni.createFrom().item(response);
+                                        }
 
-                                         logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                                         long startTime = System.currentTimeMillis();
-                                         Span span = tracer.spanBuilder("findTrashedBanners")
-                                                         .setSpanKind(SpanKind.SERVER)
-                                                         .setAttribute("service.name", "banner-service")
-                                                         .setAttribute("operation", "find_trashed_banners")
-                                                         .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findTrashedBanners",
+                                                        "find_trashed_banners", attrs,
+                                                        () -> bannerQueryRepository.findTrashedBanners(request)
+                                                                        .chain(pagedResult -> {
+                                                                                ApiResponsePagination<List<BannerResponseDeleteAt>> response = buildPaginatedResponse(
+                                                                                                pagedResult, request,
+                                                                                                "Trashed banners retrieved successfully",
+                                                                                                BannerResponseDeleteAt::from);
 
-                                         int page = request.getPage() > 0 ? request.getPage() - 1 : 0;
-                                         int size = request.getPageSize() > 0 ? request.getPageSize() : 10;
-                                         String search = (request.getSearch() != null && !request.getSearch().isEmpty()) ? request.getSearch() : "";
-
-                                         return bannerQueryRepository.findTrashedBanners(search, page, size)
-                                                         .chain(pagedResult -> {
-                                                                 span.setAttribute("banner.count", pagedResult.getTotalRecords());
-                                                                 span.setAttribute("banner.page", request.getPage());
-                                                                 span.setAttribute("banner.size", request.getPageSize());
-
-                                                                 ApiResponsePagination<List<BannerResponseDeleteAt>> response = buildPaginatedResponse(
-                                                                                 pagedResult, request, "Trashed banners retrieved successfully",
-                                                                                 BannerResponseDeleteAt::from);
-
-                                                                 return redisService.setWithExpirationReactive(cacheKey, toJson(response), LIST_CACHE_TTL_SECONDS)
-                                                                                 .map(v -> {
-                                                                                         logger.info("Cached response for key: {}", cacheKey);
-                                                                                         logger.info("Successfully retrieved {} trashed banners", pagedResult.getTotalRecords());
-                                                                                         span.setStatus(StatusCode.OK);
-
-                                                                                         requestsTotal.add(1, Attributes.of(
-                                                                                                         AttributeKey.stringKey("operation"), "find_trashed_banners",
-                                                                                                         AttributeKey.stringKey("status"), "success"));
-                                                                                         return response;
-                                                                                 });
-                                                         })
-                                                         .onFailure().invoke(e -> {
-                                                                 logger.error("Error finding trashed banners", e);
-                                                                 span.recordException(e);
-                                                                 span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                                                 requestsTotal.add(1, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_trashed_banners",
-                                                                                 AttributeKey.stringKey("status"), "failed",
-                                                                                 AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                                                         })
-                                                         .eventually(() -> {
-                                                                 span.end();
-                                                                 double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                                                 requestDurationSeconds.record(duration, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_trashed_banners"));
-                                                                 logger.debug("Find trashed banners operation completed in {} seconds", duration);
-                                                         });
-                                 });
+                                                                                return redisService
+                                                                                                .setWithExpirationReactive(
+                                                                                                                cacheKey,
+                                                                                                                toJson(response),
+                                                                                                                LIST_CACHE_TTL_SECONDS)
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached response for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully retrieved {} trashed banners",
+                                                                                                                        pagedResult.getTotalRecords());
+                                                                                                        return response;
+                                                                                                });
+                                                                        }));
+                                });
         }
 
         @Override
         public Uni<ApiResponse<BannerResponse>> findById(Long id) {
                 String cacheKey = "banner:" + id;
 
+                Attributes attrs = Attributes.builder()
+                                .put("banner.id", id)
+                                .build();
+
                 return redisService.getReactive(cacheKey)
                                 .chain(cachedJson -> {
-                                         if (cachedJson != null) {
-                                                 logger.info("Cache HIT for key: {}", cacheKey);
-                                                 BannerResponse cachedBanner = fromJson(cachedJson, BannerResponse.class);
-                                                 return Uni.createFrom().item(ApiResponse.success("Banner found", cachedBanner));
-                                         }
+                                        if (cachedJson != null) {
+                                                logger.info("Cache HIT for key: {}", cacheKey);
+                                                BannerResponse cachedBanner = fromJson(cachedJson,
+                                                                BannerResponse.class);
+                                                return Uni.createFrom().item(
+                                                                ApiResponse.success("Banner found", cachedBanner));
+                                        }
 
-                                         logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
-                                         long startTime = System.currentTimeMillis();
-                                         Span span = tracer.spanBuilder("findBannerById")
-                                                         .setSpanKind(SpanKind.SERVER)
-                                                         .setAttribute("service.name", "banner-service")
-                                                         .setAttribute("operation", "find_banner_by_id")
-                                                         .setAttribute("banner.id", id.toString())
-                                                         .startSpan();
+                                        logger.info("Cache MISS for key: {}. Fetching from DB.", cacheKey);
+                                        return tracingMetrics.traceAndMeasure("findBannerById", "find_banner_by_id",
+                                                        attrs, () -> bannerQueryRepository.findById(id)
+                                                                        .chain(banner -> {
+                                                                                if (banner == null) {
+                                                                                        logger.warn("Banner not found with id: {}",
+                                                                                                        id);
+                                                                                        throw new NotFoundException(
+                                                                                                        "Banner not found with id: "
+                                                                                                                        + id);
+                                                                                }
 
-                                         return bannerQueryRepository.findById(id)
-                                                         .chain(banner -> {
-                                                                 if (banner == null) {
-                                                                         logger.warn("Banner not found with id: {}", id);
-                                                                         span.setStatus(StatusCode.ERROR, "Banner not found");
-                                                                         span.setAttribute("banner.found", false);
+                                                                                BannerResponse bannerResponse = BannerResponse
+                                                                                                .from(banner);
 
-                                                                         requestsTotal.add(1, Attributes.of(
-                                                                                         AttributeKey.stringKey("operation"), "find_banner_by_id",
-                                                                                         AttributeKey.stringKey("status"), "failed",
-                                                                                         AttributeKey.stringKey("error_type"), "not_found"));
-
-                                                                         throw new NotFoundException("Banner not found with id: " + id);
-                                                                 }
-
-                                                                 span.setAttribute("banner.found", true);
-                                                                 span.setAttribute("banner.name", banner.getName());
-
-                                                                 BannerResponse bannerResponse = BannerResponse.from(banner);
-
-                                                                 return redisService.setReactive(cacheKey, toJson(bannerResponse))
-                                                                                 .map(v -> {
-                                                                                         logger.info("Cached banner for key: {}", cacheKey);
-                                                                                         logger.info("Successfully found banner with id: {} and name: {}", id, banner.getName());
-                                                                                         span.setStatus(StatusCode.OK);
-
-                                                                                         requestsTotal.add(1, Attributes.of(
-                                                                                                         AttributeKey.stringKey("operation"), "find_banner_by_id",
-                                                                                                         AttributeKey.stringKey("status"), "success"));
-
-                                                                                         return ApiResponse.success("Banner found", bannerResponse);
-                                                                                 });
-                                                         })
-                                                         .onFailure().invoke(e -> {
-                                                                 logger.error("Error finding banner by id: {}", id, e);
-                                                                 span.recordException(e);
-                                                                 span.setStatus(StatusCode.ERROR, e.getMessage());
-
-                                                                 requestsTotal.add(1, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_banner_by_id",
-                                                                                 AttributeKey.stringKey("status"), "failed",
-                                                                                 AttributeKey.stringKey("error_type"), e.getClass().getSimpleName()));
-                                                         })
-                                                         .eventually(() -> {
-                                                                 span.end();
-                                                                 double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                                                                 requestDurationSeconds.record(duration, Attributes.of(
-                                                                                 AttributeKey.stringKey("operation"), "find_banner_by_id"));
-                                                                 logger.debug("Find banner by id operation completed in {} seconds", duration);
-                                                         });
-                                 });
+                                                                                return redisService.setReactive(
+                                                                                                cacheKey,
+                                                                                                toJson(bannerResponse))
+                                                                                                .map(v -> {
+                                                                                                        logger.info("Cached banner for key: {}",
+                                                                                                                        cacheKey);
+                                                                                                        logger.info("Successfully found banner with id: {} and name: {}",
+                                                                                                                        id,
+                                                                                                                        banner.getName());
+                                                                                                        return ApiResponse
+                                                                                                                        .success("Banner found",
+                                                                                                                                        bannerResponse);
+                                                                                                });
+                                                                        }));
+                                });
         }
 
         private <T, R> ApiResponsePagination<List<R>> buildPaginatedResponse(

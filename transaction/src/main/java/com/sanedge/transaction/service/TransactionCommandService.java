@@ -13,9 +13,9 @@ public interface TransactionCommandService {
     Uni<ApiResponse<TransactionResponse>> update(UpdateTransactionRequest req);
     Uni<ApiResponse<TransactionResponseDeleteAt>> trash(Integer id);
     Uni<ApiResponse<TransactionResponseDeleteAt>> restore(Integer id);
-    Uni<ApiResponse<Boolean>> delete(Integer id);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAll();
+    Uni<ApiResponse<Void>> delete(Integer id);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAll();
     Uni<ApiResponse<Boolean>> deleteByOrder(Integer orderId);
 }
 

@@ -40,8 +40,6 @@ class OrderCommandGrpcHandlerTest {
         handler.orderCommandService = orderCommandService;
     }
 
-    // ========== Helper Methods ==========
-
     private OrderResponse createOrderResponse(Long id, Integer totalPrice) {
         return OrderResponse.builder()
                 .id(id)
@@ -84,8 +82,6 @@ class OrderCommandGrpcHandlerTest {
                 .build();
         return request;
     }
-
-    // ========== create Tests ==========
 
     @Test
     @DisplayName("create - should return ApiResponseOrder on success")
@@ -145,8 +141,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== update Tests ==========
-
     @Test
     @DisplayName("update - should return ApiResponseOrder on success")
     void update_Success() {
@@ -199,8 +193,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== trashedOrder Tests ==========
-
     @Test
     @DisplayName("trashedOrder - should return ApiResponseOrderDeleteAt on success")
     void trashedOrder_Success() {
@@ -221,6 +213,111 @@ class OrderCommandGrpcHandlerTest {
     }
 
     @Test
+    @DisplayName("trashedOrder - should return INVALID_ARGUMENT when id <= 0")
+    void trashedOrder_InvalidId_ReturnsInvalidArgument() {
+        FindByIdOrderRequest request = FindByIdOrderRequest.newBuilder().setId(0).build();
+
+        StatusRuntimeException ex = null;
+        try {
+            handler.trashedOrder(request).await().indefinitely();
+        } catch (StatusRuntimeException e) {
+            ex = e;
+        }
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
+        assertThat(ex.getStatus().getDescription()).contains("must be a positive integer");
+    }
+
+    @Test
+    @DisplayName("update - should return INVALID_ARGUMENT when orderId <= 0")
+    void update_InvalidOrderId_ReturnsInvalidArgument() {
+        OrderCommand.UpdateOrderRequest request = OrderCommand.UpdateOrderRequest.newBuilder()
+                .setOrderId(0)
+                .setUserId(100)
+                .build();
+
+        StatusRuntimeException ex = null;
+        try {
+            handler.update(request).await().indefinitely();
+        } catch (StatusRuntimeException e) {
+            ex = e;
+        }
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
+        assertThat(ex.getStatus().getDescription()).contains("must be a positive integer");
+    }
+
+    @Test
+    @DisplayName("create - should return INVALID_ARGUMENT when item productId <= 0")
+    void create_InvalidItemProductId_ReturnsInvalidArgument() {
+        OrderCommand.CreateOrderRequest request = OrderCommand.CreateOrderRequest.newBuilder()
+                .setMerchantId(100)
+                .setUserId(100)
+                .addItems(OrderCommand.CreateOrderItemRequest.newBuilder()
+                        .setProductId(0).setQuantity(2).setPrice(100).build())
+                .build();
+
+        StatusRuntimeException ex = null;
+        try {
+            handler.create(request).await().indefinitely();
+        } catch (StatusRuntimeException e) {
+            ex = e;
+        }
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
+        assertThat(ex.getStatus().getDescription()).contains("Product id");
+    }
+
+    @Test
+    @DisplayName("update - should return INVALID_ARGUMENT when item productId <= 0")
+    void update_InvalidItemProductId_ReturnsInvalidArgument() {
+        OrderCommand.UpdateOrderRequest request = OrderCommand.UpdateOrderRequest.newBuilder()
+                .setOrderId(1)
+                .setUserId(100)
+                .addItems(OrderCommand.UpdateOrderItemRequest.newBuilder()
+                        .setOrderItemId(10).setProductId(0).setQuantity(3).setPrice(150).build())
+                .build();
+
+        StatusRuntimeException ex = null;
+        try {
+            handler.update(request).await().indefinitely();
+        } catch (StatusRuntimeException e) {
+            ex = e;
+        }
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
+        assertThat(ex.getStatus().getDescription()).contains("Product id");
+    }
+
+    @Test
+    @DisplayName("update - should return INVALID_ARGUMENT when shipping shippingId <= 0")
+    void update_InvalidShippingId_ReturnsInvalidArgument() {
+        OrderCommand.UpdateOrderRequest request = OrderCommand.UpdateOrderRequest.newBuilder()
+                .setOrderId(1)
+                .setUserId(100)
+                .setShipping(pb.shipping_address.ShippingAddressCommand.UpdateShippingAddressRequest.newBuilder()
+                        .setShippingId(0)
+                        .setOrderId(1)
+                        .build())
+                .build();
+
+        StatusRuntimeException ex = null;
+        try {
+            handler.update(request).await().indefinitely();
+        } catch (StatusRuntimeException e) {
+            ex = e;
+        }
+
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatus().getCode()).isEqualTo(Status.INVALID_ARGUMENT.getCode());
+        assertThat(ex.getStatus().getDescription()).contains("Shipping id");
+    }
+
+    @Test
     @DisplayName("trashedOrder - should return NOT_FOUND when order not found")
     void trashedOrder_NotFound() {
         FindByIdOrderRequest request = FindByIdOrderRequest.newBuilder().setId(999).build();
@@ -238,8 +335,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
-
-    // ========== restoreOrder Tests ==========
 
     @Test
     @DisplayName("restoreOrder - should return ApiResponseOrderDeleteAt on success")
@@ -281,8 +376,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.NOT_FOUND.getCode());
     }
 
-    // ========== deleteOrderPermanent Tests ==========
-
     @Test
     @DisplayName("deleteOrderPermanent - should return ApiResponseOrderDelete on success")
     void deleteOrderPermanent_Success() {
@@ -317,8 +410,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
 
-    // ========== restoreAllOrder Tests ==========
-
     @Test
     @DisplayName("restoreAllOrder - should return ApiResponseOrderAll on success")
     void restoreAllOrder_Success() {
@@ -349,8 +440,6 @@ class OrderCommandGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== deleteAllOrderPermanent Tests ==========
 
     @Test
     @DisplayName("deleteAllOrderPermanent - should return ApiResponseOrderAll on success")

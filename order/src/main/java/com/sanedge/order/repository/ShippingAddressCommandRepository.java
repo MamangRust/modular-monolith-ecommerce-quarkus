@@ -37,13 +37,13 @@ public class ShippingAddressCommandRepository implements PanacheRepository<Shipp
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long shippingAddressId) {
+    public Uni<ShippingAddress> deletePermanent(Long shippingAddressId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", shippingAddressId).firstResult()
                 .chain(address -> {
                     if (address != null) {
-                        return delete(address).map(v -> true);
+                        return delete(address).map(v -> address);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

@@ -1,31 +1,34 @@
 package com.sanedge.merchant_award.handler;
 
-import java.util.List;
-
 import com.sanedge.merchant_award.domain.requests.FindAllMerchantRequest;
 import com.sanedge.merchant_award.domain.response.MerchantAwardResponse;
 import com.sanedge.merchant_award.domain.response.MerchantAwardResponseDeleteAt;
 import com.sanedge.merchant_award.service.MerchantAwardQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import pb.merchant_award.MutinyMerchantAwardQueryServiceGrpc;
 import pb.merchant_award.MerchantAwardCommon.ApiResponseMerchantAward;
 import pb.merchant_award.MerchantAwardCommon.ApiResponsePaginationMerchantAward;
 import pb.merchant_award.MerchantAwardCommon.ApiResponsePaginationMerchantAwardDeleteAt;
 import pb.merchant_award.MerchantAwardCommon.FindByIdMerchantAwardRequest;
+import pb.merchant_award.MutinyMerchantAwardQueryServiceGrpc;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
-public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServiceGrpc.MerchantAwardQueryServiceImplBase {
+public class MerchantAwardQueryGrpcHandler
+        extends MutinyMerchantAwardQueryServiceGrpc.MerchantAwardQueryServiceImplBase {
 
     @Inject
     MerchantAwardQueryService merchantAwardQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationMerchantAward> findAll(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
@@ -47,11 +50,15 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseMerchantAward> findById(FindByIdMerchantAwardRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return merchantAwardQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseMerchantAward.Builder builder = ApiResponseMerchantAward.newBuilder()
@@ -66,12 +73,14 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
-    public Uni<ApiResponsePaginationMerchantAwardDeleteAt> findByActive(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationMerchantAwardDeleteAt> findByActive(
+            pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
         domainReq.setPageSize(request.getPageSize());
@@ -79,7 +88,8 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
 
         return merchantAwardQueryService.findByActive(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantAwardDeleteAt.Builder builder = ApiResponsePaginationMerchantAwardDeleteAt.newBuilder()
+                    ApiResponsePaginationMerchantAwardDeleteAt.Builder builder = ApiResponsePaginationMerchantAwardDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -92,11 +102,13 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
-    public Uni<ApiResponsePaginationMerchantAwardDeleteAt> findByTrashed(pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
+    @WithSession
+    public Uni<ApiResponsePaginationMerchantAwardDeleteAt> findByTrashed(
+            pb.merchant.MerchantQuery.FindAllMerchantRequest request) {
         FindAllMerchantRequest domainReq = new FindAllMerchantRequest();
         domainReq.setPage(request.getPage());
         domainReq.setPageSize(request.getPageSize());
@@ -104,7 +116,8 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
 
         return merchantAwardQueryService.findByTrashed(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationMerchantAwardDeleteAt.Builder builder = ApiResponsePaginationMerchantAwardDeleteAt.newBuilder()
+                    ApiResponsePaginationMerchantAwardDeleteAt.Builder builder = ApiResponsePaginationMerchantAwardDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -117,14 +130,15 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse toProto(MerchantAwardResponse r) {
         if (r == null) {
             return pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse.getDefaultInstance();
         }
-        pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse.Builder builder = pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse.newBuilder();
+        pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse.Builder builder = pb.merchant_award.MerchantAwardCommon.MerchantAwardResponse
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId().intValue());
         }
@@ -158,11 +172,13 @@ public class MerchantAwardQueryGrpcHandler extends MutinyMerchantAwardQueryServi
         return builder.build();
     }
 
-    private pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt toProto(MerchantAwardResponseDeleteAt r) {
+    private pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt toProto(
+            MerchantAwardResponseDeleteAt r) {
         if (r == null) {
             return pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt.getDefaultInstance();
         }
-        pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt.Builder builder = pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt.newBuilder();
+        pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt.Builder builder = pb.merchant_award.MerchantAwardCommon.MerchantAwardResponseDeleteAt
+                .newBuilder();
         if (r.getId() != null) {
             builder.setId(r.getId().intValue());
         }

@@ -38,8 +38,6 @@ class OrderTotalRevenueGrpcHandlerTest {
         handler.orderTotalRevenueService = orderTotalRevenueService;
     }
 
-    // ========== findMonthlyTotalRevenue Tests ==========
-
     @Test
     void findMonthlyTotalRevenue_success_returnsResponse() {
         OrderTotalRevenue.FindYearMonthTotalRevenue request = OrderTotalRevenue.FindYearMonthTotalRevenue.newBuilder()
@@ -83,8 +81,6 @@ class OrderTotalRevenueGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== findYearlyTotalRevenue Tests ==========
 
     @Test
     void findYearlyTotalRevenue_success_returnsResponse() {

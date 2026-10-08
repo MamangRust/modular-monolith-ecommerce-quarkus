@@ -12,7 +12,10 @@ import io.smallrye.mutiny.Uni;
 
 public interface SliderQueryService {
     Uni<ApiResponsePagination<List<SliderResponse>>> findAll(FindAllSliderRequest req);
+
     Uni<ApiResponsePagination<List<SliderResponseDeleteAt>>> findByActive(FindAllSliderRequest req);
+
     Uni<ApiResponsePagination<List<SliderResponseDeleteAt>>> findByTrashed(FindAllSliderRequest req);
+
     Uni<ApiResponse<SliderResponse>> findById(Integer id);
 }

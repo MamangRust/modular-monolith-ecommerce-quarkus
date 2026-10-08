@@ -37,8 +37,6 @@ class OrderRevenueByMerchantGrpcHandlerTest {
         handler.orderSoldOutByMerchantService = orderSoldOutByMerchantService;
     }
 
-    // ========== findMonthlyRevenueByMerchant Tests ==========
-
     @Test
     void findMonthlyRevenueByMerchant_success_returnsResponse() {
         OrderRevenue.FindYearOrderByMerchant request = OrderRevenue.FindYearOrderByMerchant.newBuilder()
@@ -86,8 +84,6 @@ class OrderRevenueByMerchantGrpcHandlerTest {
         assertThat(ex).isNotNull();
         assertThat(ex.getStatus().getCode()).isEqualTo(Status.INTERNAL.getCode());
     }
-
-    // ========== findYearlyRevenueByMerchant Tests ==========
 
     @Test
     void findYearlyRevenueByMerchant_success_returnsResponse() {

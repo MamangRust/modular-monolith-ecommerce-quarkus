@@ -34,8 +34,8 @@ class ReviewQueryGrpcHandlerTest {
 
     @Test
     void findAll_Success() {
-        ApiResponsePagination<java.util.List<?>> resp = new ApiResponsePagination<>(
-                "success", "ok", java.util.List.of(), null);
+        ApiResponsePagination<java.util.List<com.sanedge.review.domain.response.ReviewResponse>> resp =
+                new ApiResponsePagination<>("success", "ok", java.util.List.of(), null);
         lenient().when(reviewQueryService.findAll(any(FindAllReview.class)))
                 .thenReturn(Uni.createFrom().item(resp));
         var result = reviewQueryGrpcHandler.findAll(pb.review.ReviewQuery.FindAllReviewRequest.newBuilder().setPage(1).setPageSize(10).build()).await().indefinitely();

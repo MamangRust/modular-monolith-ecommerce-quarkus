@@ -3,8 +3,10 @@ package com.sanedge.product.handler;
 import com.sanedge.product.service.ProductQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.product.MutinyProductQueryServiceGrpc;
@@ -12,6 +14,7 @@ import pb.product.ProductCommon.ApiResponsePaginationProduct;
 import pb.product.ProductCommon.ApiResponsePaginationProductDeleteAt;
 import pb.product.ProductCommon.ApiResponseProduct;
 import pb.product.ProductCommon.FindByIdProductRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -21,6 +24,7 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
     ProductQueryService productQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationProduct> findAll(pb.product.ProductQuery.FindAllProductRequest request) {
         com.sanedge.product.domain.requests.FindAllProductRequest domainReq = new com.sanedge.product.domain.requests.FindAllProductRequest();
         domainReq.setPage(request.getPage());
@@ -42,12 +46,19 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationProduct> findByMerchant(
             pb.product.ProductQuery.FindAllProductMerchantRequest request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
+        if (request.getCategoryId() <= 0) {
+            return IdValidator.invalid("Category id");
+        }
         com.sanedge.product.domain.requests.FindAllProductByMerchantRequest domainReq = new com.sanedge.product.domain.requests.FindAllProductByMerchantRequest();
         domainReq.setMerchantId(request.getMerchantId());
         domainReq.setCategoryId(request.getCategoryId());
@@ -72,10 +83,11 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationProduct> findByCategory(
             pb.product.ProductQuery.FindAllProductCategoryRequest request) {
         com.sanedge.product.domain.requests.FindAllProductByCategoryRequest domainReq = new com.sanedge.product.domain.requests.FindAllProductByCategoryRequest();
@@ -101,11 +113,15 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseProduct> findById(FindByIdProductRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return productQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseProduct.Builder builder = ApiResponseProduct.newBuilder()
@@ -120,11 +136,12 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationProductDeleteAt> findByActive(
             pb.product.ProductQuery.FindAllProductRequest request) {
         com.sanedge.product.domain.requests.FindAllProductRequest domainReq = new com.sanedge.product.domain.requests.FindAllProductRequest();
@@ -148,10 +165,11 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationProductDeleteAt> findByTrashed(
             pb.product.ProductQuery.FindAllProductRequest request) {
         com.sanedge.product.domain.requests.FindAllProductRequest domainReq = new com.sanedge.product.domain.requests.FindAllProductRequest();
@@ -175,7 +193,7 @@ public class ProductQueryGrpcHandler extends MutinyProductQueryServiceGrpc.Produ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.product.ProductCommon.ProductResponse toProto(com.sanedge.product.domain.response.ProductResponse r) {

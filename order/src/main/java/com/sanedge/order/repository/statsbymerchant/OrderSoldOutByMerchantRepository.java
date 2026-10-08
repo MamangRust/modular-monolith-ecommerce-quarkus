@@ -15,7 +15,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class OrderSoldOutByMerchantRepository implements PanacheRepository<Order> {
 
-    public Uni<List<OrderMonthly>> findMonthlyOrdersByMerchant(Integer merchantId, Integer year, Integer month) {
+    public Uni<List<OrderMonthly>> findMonthlyOrdersByMerchant(
+            com.sanedge.order.domain.requests.MonthOrderMerchantRequest req) {
+        Integer merchantId = req.getMerchantId();
+        Integer year = req.getYear();
+        Integer month = req.getMonth();
+
         java.time.LocalDate currentMonth = java.time.LocalDate.of(year, month, 1);
         java.time.LocalDate prevMonthDate = currentMonth.minusMonths(1);
 
@@ -25,47 +30,47 @@ public class OrderSoldOutByMerchantRepository implements PanacheRepository<Order
         Integer month2 = prevMonthDate.getMonthValue();
 
         String sql = """
-            WITH
-                date_ranges AS (
-                    SELECT
-                        PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range1_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range1_end,
-                        PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range2_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range2_end
-                ),
-                all_months AS (
-                    SELECT range1_start AS activity_month FROM date_ranges
-                    UNION
-                    SELECT range2_start FROM date_ranges
-                ),
-                monthly_orders AS (
-                    SELECT
-                        PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd') AS activity_month,
-                        CAST(COUNT(o.id) AS INTEGER) AS order_count,
-                        CAST(SUM(o.total_price) AS BIGINT) AS total_revenue,
-                        CAST(SUM(oi.quantity) AS INTEGER) AS total_items_sold
-                    FROM orders o
-                    JOIN order_items oi ON o.id = oi.order_id
-                    JOIN date_ranges dr ON (
-                        (o.created_at >= dr.range1_start AND o.created_at < dr.range1_end)
-                        OR
-                        (o.created_at >= dr.range2_start AND o.created_at < dr.range2_end)
+                WITH
+                    date_ranges AS (
+                        SELECT
+                            MAKE_DATE(:year1, :month1, 1)::timestamp AS range1_start,
+                            (MAKE_DATE(:year1, :month1, 1) + INTERVAL '1 month')::timestamp AS range1_end,
+                            MAKE_DATE(:year2, :month2, 1)::timestamp AS range2_start,
+                            (MAKE_DATE(:year2, :month2, 1) + INTERVAL '1 month')::timestamp AS range2_end
+                    ),
+                    all_months AS (
+                        SELECT range1_start AS activity_month FROM date_ranges
+                        UNION
+                        SELECT range2_start FROM date_ranges
+                    ),
+                    monthly_orders AS (
+                        SELECT
+                            DATE_TRUNC('month', o.created_at) AS activity_month,
+                            CAST(COUNT(o.id) AS INTEGER) AS order_count,
+                            CAST(SUM(o.total_price) AS BIGINT) AS total_revenue,
+                            CAST(SUM(oi.quantity) AS INTEGER) AS total_items_sold
+                        FROM orders o
+                        JOIN order_items oi ON o.id = oi.order_id
+                        JOIN date_ranges dr ON (
+                            (o.created_at >= dr.range1_start AND o.created_at < dr.range1_end)
+                            OR
+                            (o.created_at >= dr.range2_start AND o.created_at < dr.range2_end)
+                        )
+                        WHERE o.deleted_at IS NULL
+                          AND oi.deleted_at IS NULL
+                          AND o.merchant_id = :merchantId
+                        GROUP BY DATE_TRUNC('month', o.created_at)
                     )
-                    WHERE o.deleted_at IS NULL
-                      AND oi.deleted_at IS NULL
-                      AND o.merchant_id = :merchantId
-                    GROUP BY PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd')
-                )
-            SELECT
-                FORMATDATETIME(am.activity_month, 'MMM') AS "month",
-                CAST(COALESCE(mo.order_count, 0) AS INTEGER) AS orderCount,
-                CAST(COALESCE(mo.total_revenue, 0) AS BIGINT) AS totalRevenue,
-                CAST(COALESCE(mo.total_items_sold, 0) AS INTEGER) AS totalItemsSold
-            FROM all_months am
-            LEFT JOIN monthly_orders mo
-                   ON am.activity_month = mo.activity_month
-            ORDER BY am.activity_month
-            """;
+                SELECT
+                    TO_CHAR(am.activity_month, 'Mon') AS "month",
+                    CAST(COALESCE(mo.order_count, 0) AS INTEGER) AS orderCount,
+                    CAST(COALESCE(mo.total_revenue, 0) AS BIGINT) AS totalRevenue,
+                    CAST(COALESCE(mo.total_items_sold, 0) AS INTEGER) AS totalItemsSold
+                FROM all_months am
+                LEFT JOIN monthly_orders mo
+                       ON am.activity_month = mo.activity_month
+                ORDER BY am.activity_month
+                """;
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
@@ -93,32 +98,32 @@ public class OrderSoldOutByMerchantRepository implements PanacheRepository<Order
 
     public Uni<List<OrderYearly>> findYearlyOrdersByMerchant(Integer merchantId, Integer year) {
         String sql = """
-            WITH last_five_years AS (
+                WITH last_five_years AS (
+                    SELECT
+                        CAST(EXTRACT(YEAR FROM o.created_at) AS VARCHAR) AS "year",
+                        CAST(COUNT(o.id) AS INTEGER) AS order_count,
+                        CAST(SUM(o.total_price) AS BIGINT) AS total_revenue,
+                        CAST(SUM(oi.quantity) AS INTEGER) AS total_items_sold,
+                        CAST(COUNT(DISTINCT o.user_id) AS INTEGER) AS active_cashiers,
+                        CAST(COUNT(DISTINCT oi.product_id) AS INTEGER) AS unique_products_sold
+                    FROM orders o
+                    JOIN order_items oi ON o.id = oi.order_id
+                    WHERE o.deleted_at IS NULL
+                      AND oi.deleted_at IS NULL
+                      AND o.merchant_id = :merchantId
+                      AND EXTRACT(YEAR FROM o.created_at) BETWEEN :year - 4 AND :year
+                    GROUP BY EXTRACT(YEAR FROM o.created_at)
+                )
                 SELECT
-                    CAST(EXTRACT(YEAR FROM o.created_at) AS VARCHAR) AS "year",
-                    CAST(COUNT(o.id) AS INTEGER) AS order_count,
-                    CAST(SUM(o.total_price) AS BIGINT) AS total_revenue,
-                    CAST(SUM(oi.quantity) AS INTEGER) AS total_items_sold,
-                    CAST(COUNT(DISTINCT o.user_id) AS INTEGER) AS active_cashiers,
-                    CAST(COUNT(DISTINCT oi.product_id) AS INTEGER) AS unique_products_sold
-                FROM orders o
-                JOIN order_items oi ON o.id = oi.order_id
-                WHERE o.deleted_at IS NULL
-                  AND oi.deleted_at IS NULL
-                  AND o.merchant_id = :merchantId
-                  AND EXTRACT(YEAR FROM o.created_at) BETWEEN :year - 4 AND :year
-                GROUP BY EXTRACT(YEAR FROM o.created_at)
-            )
-            SELECT
-                "year" AS "year",
-                order_count AS orderCount,
-                total_revenue AS totalRevenue,
-                total_items_sold AS totalItemsSold,
-                active_cashiers AS activeCashiers,
-                unique_products_sold AS uniqueProductsSold
-            FROM last_five_years
-            ORDER BY "year"
-            """;
+                    "year" AS "year",
+                    order_count AS orderCount,
+                    total_revenue AS totalRevenue,
+                    total_items_sold AS totalItemsSold,
+                    active_cashiers AS activeCashiers,
+                    unique_products_sold AS uniqueProductsSold
+                FROM last_five_years
+                ORDER BY "year"
+                """;
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);

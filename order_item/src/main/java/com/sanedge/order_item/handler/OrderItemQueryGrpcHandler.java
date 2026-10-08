@@ -9,8 +9,10 @@ import com.sanedge.order_item.domain.response.OrderItemResponseDeleteAt;
 import com.sanedge.order_item.service.OrderItemQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import pb.order_item.MutinyOrderItemQueryServiceGrpc;
@@ -18,6 +20,7 @@ import pb.order_item.OrderItemCommon.ApiResponsePaginationOrderItem;
 import pb.order_item.OrderItemCommon.ApiResponsePaginationOrderItemDeleteAt;
 import pb.order_item.OrderItemCommon.ApiResponsesOrderItem;
 import pb.order_item.OrderItemCommon.FindByIdOrderItemRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,6 +30,7 @@ public class OrderItemQueryGrpcHandler extends MutinyOrderItemQueryServiceGrpc.O
     OrderItemQueryService orderItemQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrderItem> findAll(pb.order_item.OrderItemQuery.FindAllOrderItemRequest request) {
         FindAllOrderItemRequest domainReq = new FindAllOrderItemRequest();
         domainReq.setPage(request.getPage());
@@ -45,10 +49,11 @@ public class OrderItemQueryGrpcHandler extends MutinyOrderItemQueryServiceGrpc.O
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrderItemDeleteAt> findByActive(pb.order_item.OrderItemQuery.FindAllOrderItemRequest request) {
         FindAllOrderItemRequest domainReq = new FindAllOrderItemRequest();
         domainReq.setPage(request.getPage());
@@ -67,10 +72,11 @@ public class OrderItemQueryGrpcHandler extends MutinyOrderItemQueryServiceGrpc.O
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationOrderItemDeleteAt> findByTrashed(pb.order_item.OrderItemQuery.FindAllOrderItemRequest request) {
         FindAllOrderItemRequest domainReq = new FindAllOrderItemRequest();
         domainReq.setPage(request.getPage());
@@ -89,11 +95,15 @@ public class OrderItemQueryGrpcHandler extends MutinyOrderItemQueryServiceGrpc.O
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsesOrderItem> findOrderItemByOrder(FindByIdOrderItemRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return orderItemQueryService.findByOrder((long) request.getId())
                 .map(apiResp -> {
                     ApiResponsesOrderItem.Builder builder = ApiResponsesOrderItem.newBuilder()
@@ -110,7 +120,7 @@ public class OrderItemQueryGrpcHandler extends MutinyOrderItemQueryServiceGrpc.O
                     if (e instanceof ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 

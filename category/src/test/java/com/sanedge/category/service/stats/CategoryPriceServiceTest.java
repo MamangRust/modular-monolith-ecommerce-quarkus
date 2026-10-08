@@ -49,13 +49,15 @@ class CategoryPriceServiceTest {
     @BeforeEach
     void setUp() {
         service = new CategoryPriceServiceImpl(categoryPriceRepository, redisService, objectMapper, tracingMetrics);
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private CategoriesMonthPrice createMonthPrice() {
@@ -65,8 +67,6 @@ class CategoryPriceServiceTest {
     private CategoriesYearPrice createYearPrice() {
         return new CategoriesYearPrice("2024", 1L, "Cat-1", 100L, 500L, 100000L, 20L);
     }
-
-    // ========== findMonthPrice Tests ==========
 
     @Test
     void findMonthPrice_cacheMiss_returnsFromDb() {
@@ -95,8 +95,6 @@ class CategoryPriceServiceTest {
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findYearPrice Tests ==========
 
     @Test
     void findYearPrice_cacheMiss_returnsFromDb() {

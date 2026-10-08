@@ -15,9 +15,9 @@ public interface ReviewDetailService {
     Uni<ApiResponse<List<ReviewDetailResponse>>> update(List<UpdateReviewDetailRequest> requests);
     Uni<ApiResponse<ReviewDetailResponseDeleteAt>> trash(Integer reviewDetailId);
     Uni<ApiResponse<ReviewDetailResponseDeleteAt>> restore(Integer reviewDetailId);
-    Uni<ApiResponse<Boolean>> delete(Integer reviewDetailId);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAll();
+    Uni<ApiResponse<Void>> delete(Integer reviewDetailId);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAll();
 
     Uni<com.sanedge.common.domain.response.ApiResponsePagination<List<ReviewDetailResponse>>> findAll(int page, int size, String search);
     Uni<com.sanedge.common.domain.response.ApiResponsePagination<List<ReviewDetailResponseDeleteAt>>> findByActive(int page, int size, String search);

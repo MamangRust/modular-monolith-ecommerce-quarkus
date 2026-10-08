@@ -35,13 +35,13 @@ public class MerchantDocumentCommandRepository implements PanacheRepository<Merc
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long documentId) {
+    public Uni<MerchantDocument> deletePermanent(Long documentId) {
         return find("documentId = ?1", documentId).firstResult()
                 .chain(doc -> {
                     if (doc != null) {
-                        return delete(doc).map(v -> true);
+                        return delete(doc).map(v -> doc);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

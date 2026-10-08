@@ -1,0 +1,10 @@
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-08-20 02:13:57,136 WARN  [io.quarkus.config] (main) The "quarkus.vertx.worker-pool-size" config property is deprecated and should not be used anymore.
+2026-08-20 02:13:58,499 INFO  [com.sanedge.common.chaos.ChaosResourceSabotage] (main) 🛑 Halting resource sabotage (CPU pressure & Memory leaks).
+2026-08-20 02:13:58,664 INFO  [com.sanedge.common.chaos.ChaosManager] (main) ✅ Chaos configuration successfully loaded/reloaded from chaos.yaml. Total policies: 121
+2026-08-20 02:13:58,771 INFO  [io.quarkus] (main) gateway 1.0.0-SNAPSHOT on JVM (powered by Quarkus 3.31.3) started in 2.634s. Listening on: http://0.0.0.0:8080
+2026-08-20 02:13:58,771 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-08-20 02:13:58,771 INFO  [io.quarkus] (main) Installed features: [cdi, grpc-client, hibernate-validator, opentelemetry, redis-client, rest, rest-jackson, security, smallrye-context-propagation, smallrye-health, smallrye-jwt, smallrye-openapi, swagger-ui, vertx]

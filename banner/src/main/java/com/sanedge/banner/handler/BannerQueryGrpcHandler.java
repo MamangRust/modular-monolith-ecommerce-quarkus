@@ -1,23 +1,23 @@
 package com.sanedge.banner.handler;
 
-import java.util.List;
-
-import com.sanedge.common.domain.response.ApiResponsePagination;
 import com.sanedge.banner.domain.requests.FindAllBannerRequest;
 import com.sanedge.banner.domain.response.BannerResponse;
 import com.sanedge.banner.domain.response.BannerResponseDeleteAt;
 import com.sanedge.banner.service.BannerQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import pb.banner.MutinyBannerQueryServiceGrpc;
 import pb.banner.BannerCommon.ApiResponseBanner;
 import pb.banner.BannerCommon.ApiResponsePaginationBanner;
 import pb.banner.BannerCommon.ApiResponsePaginationBannerDeleteAt;
 import pb.banner.BannerCommon.FindByIdBannerRequest;
+import pb.banner.MutinyBannerQueryServiceGrpc;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,6 +27,7 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
     BannerQueryService bannerQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationBanner> findAll(pb.banner.BannerQuery.FindAllBannerRequest request) {
         FindAllBannerRequest domainReq = new FindAllBannerRequest();
         domainReq.setPage(request.getPage());
@@ -48,11 +49,15 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseBanner> findById(FindByIdBannerRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return bannerQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseBanner.Builder builder = ApiResponseBanner.newBuilder()
@@ -67,11 +72,12 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
                     if (e instanceof jakarta.ws.rs.NotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationBannerDeleteAt> findByActive(pb.banner.BannerQuery.FindAllBannerRequest request) {
         FindAllBannerRequest domainReq = new FindAllBannerRequest();
         domainReq.setPage(request.getPage());
@@ -80,7 +86,8 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
 
         return bannerQueryService.findActivePaginated(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationBannerDeleteAt.Builder builder = ApiResponsePaginationBannerDeleteAt.newBuilder()
+                    ApiResponsePaginationBannerDeleteAt.Builder builder = ApiResponsePaginationBannerDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -93,10 +100,11 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationBannerDeleteAt> findByTrashed(pb.banner.BannerQuery.FindAllBannerRequest request) {
         FindAllBannerRequest domainReq = new FindAllBannerRequest();
         domainReq.setPage(request.getPage());
@@ -105,7 +113,8 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
 
         return bannerQueryService.findTrashedPaginated(domainReq)
                 .map(apiResp -> {
-                    ApiResponsePaginationBannerDeleteAt.Builder builder = ApiResponsePaginationBannerDeleteAt.newBuilder()
+                    ApiResponsePaginationBannerDeleteAt.Builder builder = ApiResponsePaginationBannerDeleteAt
+                            .newBuilder()
                             .setStatus(apiResp.status())
                             .setMessage(apiResp.message());
                     if (apiResp.data() != null) {
@@ -118,7 +127,7 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.banner.BannerCommon.BannerResponse toProto(BannerResponse r) {
@@ -160,7 +169,8 @@ public class BannerQueryGrpcHandler extends MutinyBannerQueryServiceGrpc.BannerQ
         if (r == null) {
             return pb.banner.BannerCommon.BannerResponseDeleteAt.getDefaultInstance();
         }
-        pb.banner.BannerCommon.BannerResponseDeleteAt.Builder builder = pb.banner.BannerCommon.BannerResponseDeleteAt.newBuilder();
+        pb.banner.BannerCommon.BannerResponseDeleteAt.Builder builder = pb.banner.BannerCommon.BannerResponseDeleteAt
+                .newBuilder();
         if (r.getId() != null) {
             builder.setBannerId(r.getId().intValue());
         }

@@ -41,17 +41,17 @@ public class OrderTotalRevenueRepository implements PanacheRepository<Order> {
                 GROUP BY CAST(EXTRACT(YEAR FROM o.created_at) AS INTEGER), CAST(EXTRACT(MONTH FROM o.created_at) AS INTEGER)
             ),
             all_months AS (
-                SELECT CAST(:year1 AS VARCHAR) AS "year", CAST(:month1 AS INTEGER) AS month_num, FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:month1 AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM') AS month_name
+                SELECT CAST(:year1 AS INTEGER) AS "year", CAST(:month1 AS INTEGER) AS month_num, TO_CHAR(MAKE_DATE(2000, :month1, 1), 'FMMonth') AS month_name
                 UNION
-                SELECT CAST(:year2 AS VARCHAR) AS "year", CAST(:month2 AS INTEGER) AS month_num, FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST(:month2 AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMMM') AS month_name
+                SELECT CAST(:year2 AS INTEGER) AS "year", CAST(:month2 AS INTEGER) AS month_num, TO_CHAR(MAKE_DATE(2000, :month2, 1), 'FMMonth') AS month_name
             )
             SELECT
-                am."year" AS "year",
+                am."year"::VARCHAR AS "year",
                 am.month_name AS "month",
-                CAST(COALESCE(mr.total_revenue, 0) AS BIGINT) AS totalRevenue
+                COALESCE(mr.total_revenue, 0) AS totalRevenue
             FROM all_months am
             LEFT JOIN monthly_revenue mr
-            ON CAST(am."year" AS INTEGER) = mr."year" AND am.month_num = mr.month_num
+                   ON am."year" = mr."year" AND am.month_num = mr.month_num
             ORDER BY am."year" DESC, am.month_num DESC
             """;
 

@@ -39,5 +39,6 @@ service OrderItemCommandService {
     rpc RestoreAllOrdersItem(google.protobuf.Empty) returns (ApiResponseOrderItemAll);
     rpc DeleteAllPermanentOrdersItem(google.protobuf.Empty) returns (ApiResponseOrderItemAll);
     rpc DeleteOrderItemByOrderPermanent(FindByIdOrderItemRequest) returns (ApiResponseOrderItemDelete);
+    rpc DeleteOrderItemByOrderRollback(FindByIdOrderItemRequest) returns (ApiResponseOrderItemDelete);
     rpc CalculateTotalPrice(CalculateTotalPriceRequest) returns (CalculateTotalPriceResponse);
 }

@@ -1,67 +1,49 @@
 package com.sanedge.auth.service;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
-import com.sanedge.common.config.RedisService;
-import com.sanedge.common.utils.JwtUtil;
-import com.sanedge.common.utils.PasswordUtil;
+import com.sanedge.auth.domain.requests.RegisterRequest;
+import com.sanedge.auth.domain.requests.ResetPasswordRequest;
 import com.sanedge.auth.entity.RefreshToken;
 import com.sanedge.auth.entity.ResetToken;
+import com.sanedge.auth.entity.AuthOutbox;
+import com.sanedge.auth.repository.AuthOutboxRepository;
 import com.sanedge.auth.repository.RefreshTokenRepository;
 import com.sanedge.auth.repository.ResetTokenRepository;
-import io.quarkus.grpc.GrpcClient;
+import com.sanedge.common.adapter.model.Role;
+import com.sanedge.common.adapter.model.User;
+import com.sanedge.common.adapter.role.RolePort;
+import com.sanedge.common.adapter.user.UserPort;
+import com.sanedge.common.adapter.user_role.UserRolePort;
+import com.sanedge.common.config.RedisService;
+import com.sanedge.common.exception.ResourceNotFoundException;
+import com.sanedge.common.observability.TracingMetrics;
+import com.sanedge.common.utils.JwtUtil;
+import com.sanedge.common.utils.PasswordUtil;
+
 import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonObject;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import io.vertx.core.json.JsonObject;
-import pb.user.UserQueryService;
-import pb.user.UserCommandService;
-import pb.user.UserCommon.UserResponse;
-import pb.user.UserQuery.FindAllUserRequest;
-import pb.user.UserCommon.FindByIdUserRequest;
-import pb.user.UserCommand.CreateUserRequest;
-import pb.user.UserCommand.UpdateUserRequest;
-import pb.user.UserCommand.VerifyPasswordRequest;
-import pb.role.RoleQueryService;
-import pb.role.RoleCommandService;
-import pb.role.RoleQuery.FindByNameRoleRequest;
-import pb.role.RoleCommon.AssignRoleToUserRequest;
-
-import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleHistogram;
-import io.opentelemetry.api.metrics.LongCounter;
-import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.api.trace.Tracer;
 
 @ApplicationScoped
 public class AuthService {
-    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(AuthService.class);
 
     @Inject
-    @GrpcClient("user")
-    UserQueryService userQueryService;
+    UserPort userPort;
 
     @Inject
-    @GrpcClient("user")
-    UserCommandService userCommandService;
+    RolePort rolePort;
 
     @Inject
-    @GrpcClient("role")
-    RoleQueryService roleQueryService;
-
-    @Inject
-    @GrpcClient("role")
-    RoleCommandService roleCommandService;
+    UserRolePort userRolePort;
 
     @Inject
     RefreshTokenRepository refreshTokenRepository;
@@ -76,451 +58,248 @@ public class AuthService {
     KafkaService kafkaService;
 
     @Inject
+    AuthOutboxRepository authOutboxRepository;
+
+    @Inject
     JwtUtil jwtUtil;
 
     @Inject
     PasswordUtil passwordUtil;
 
     @Inject
-    OpenTelemetry openTelemetry;
-
-    private Tracer tracer;
-    private LongCounter requestsTotal;
-    private DoubleHistogram requestDurationSeconds;
-
-    @PostConstruct
-    void init() {
-        this.tracer = openTelemetry.getTracer("auth-service", "1.0.0");
-        io.opentelemetry.api.metrics.Meter meter = openTelemetry.getMeter("auth-service");
-
-        this.requestsTotal = meter.counterBuilder("requests_total")
-                .setDescription("Total number of requests")
-                .build();
-        this.requestDurationSeconds = meter.histogramBuilder("request_duration_seconds")
-                .setDescription("Request duration in seconds")
-                .setUnit("s")
-                .build();
-    }
+    TracingMetrics tracingMetrics;
 
     @WithTransaction
-    public Uni<UserResponse> register(String firstName, String lastName, String email, String password) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("registerUser")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "auth-service")
-                .setAttribute("operation", "register")
-                .setAttribute("user.email", email)
-                .startSpan();
+    public Uni<User> register(RegisterRequest req) {
+        String firstName = req.getFirstName();
+        String lastName = req.getLastName();
+        String email = req.getEmail();
+        String password = req.getPassword();
 
-        log.info("Attempting to register user with email: {}", email);
-        return userQueryService
-                .findAll(FindAllUserRequest.newBuilder().setSearch(email).setPage(1).setPageSize(1).build())
-                .chain(findAllResponse -> {
-                    if (findAllResponse.getDataCount() > 0) {
-                        for (UserResponse u : findAllResponse.getDataList()) {
-                            if (u.getEmail().equalsIgnoreCase(email)) {
-                                return Uni.createFrom()
-                                        .failure(new RuntimeException("User with this email already exists"));
-                            }
-                        }
+        return tracingMetrics.traceAndMeasure("registerUser", "register", () -> userPort
+                .findByEmail(email)
+                .onFailure(ResourceNotFoundException.class).recoverWithItem((User) null)
+                .chain(existing -> {
+                    if (existing != null) {
+                        return Uni.createFrom()
+                                .failure(new RuntimeException("User with this email already exists"));
                     }
 
-                    CreateUserRequest createReq = CreateUserRequest.newBuilder()
-                            .setFirstname(firstName)
-                            .setLastname(lastName)
-                            .setEmail(email)
-                            .setPassword(password)
-                            .setConfirmPassword(password)
-                            .build();
-
-                    return userCommandService.create(createReq);
+                    return userPort.createUser(new UserPort.RegisterData(
+                            firstName, lastName, email, password, password));
                 })
-                .chain(createUserResponse -> {
-                    if (!"success".equalsIgnoreCase(createUserResponse.getStatus())) {
-                        return Uni.createFrom().failure(new RuntimeException(createUserResponse.getMessage()));
-                    }
-
-                    UserResponse user = createUserResponse.getData();
+                .chain(user -> {
                     String verificationCode = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
 
                     return redisService.setWithExpirationReactive("verification:" + email, verificationCode, 900)
-                            .chain(() -> redisService.setWithExpirationReactive("verification_code:" + verificationCode,
+                            .chain(() -> redisService.setWithExpirationReactive(
+                                    "verification_code:" + verificationCode,
                                     email, 900))
                             .chain(() -> sendWelcomeEmail(user, verificationCode))
-                            .chain(() -> {
-                                return roleQueryService.findByNameRole(FindByNameRoleRequest.newBuilder().setName("ROLE_USER").build())
-                                        .onFailure().recoverWithItem(err -> {
-                                            log.warn("Failed to find ROLE_USER, using fallback ID 2: {}", err.getMessage());
-                                            return pb.role.RoleCommon.ApiResponseRole.newBuilder()
-                                                    .setData(pb.role.RoleCommon.RoleResponse.newBuilder().setId(2).build())
-                                                    .build();
-                                        })
-                                        .chain(roleResp -> {
-                                            int roleId = roleResp.hasData() ? roleResp.getData().getId() : 2;
-                                            if (roleId <= 0) {
-                                                roleId = 2;
-                                            }
-                                            AssignRoleToUserRequest assignReq = AssignRoleToUserRequest.newBuilder()
-                                                    .setUserId(user.getId())
-                                                    .setRoleId(roleId)
-                                                    .build();
-                                            return roleCommandService.assignRoleToUser(assignReq)
-                                                    .replaceWith(user);
-                                        });
-                            })
-                            .replaceWith(user);
-                })
-                .invoke(user -> {
-                    log.info("Successfully registered user: {}", user.getEmail());
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "register",
-                            AttributeKey.stringKey("status"), "success"));
-                })
-                .onFailure().invoke(err -> {
-                    log.error("Registration failed for email: {}, error: {}", email, err.getMessage());
-                    span.recordException(err);
-                    span.setStatus(StatusCode.ERROR, err.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "register",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), err.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "register"));
-                });
+                            .chain(() -> rolePort
+                                    .findByName("ROLE_USER")
+                                    .map(Role::id)
+                                    .onFailure().recoverWithItem(err -> {
+                                        LOGGER.warn(
+                                                "Failed to resolve ROLE_USER during registration, skipping role assignment: {}",
+                                                err.getMessage());
+                                        return 0;
+                                    })
+                                    .chain(roleId -> {
+                                        if (roleId == null || roleId <= 0) {
+                                            // No role assigned; login's role lookup falls back to ROLE_USER.
+                                            return Uni.createFrom().item(user);
+                                        }
+                                        return userRolePort.assignRoleToUser(user.id(), roleId)
+                                                .replaceWith(user);
+                                    }));
+                }));
     }
 
     @WithTransaction
     public Uni<String[]> login(String email, String password) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("loginUser")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "auth-service")
-                .setAttribute("operation", "login")
-                .setAttribute("user.email", email)
-                .startSpan();
-
-        log.info("Attempting login for email: {}", email);
         String failedAttemptsKey = "failed_login:" + email;
         String lockKey = "account_locked:" + email;
 
-        return redisService.existsReactive(lockKey)
+        return tracingMetrics.traceAndMeasure("loginUser", "login", () -> redisService.existsReactive(lockKey)
                 .chain(locked -> {
                     if (locked) {
                         return Uni.createFrom()
                                 .failure(new RuntimeException("Account is locked due to too many failed attempts"));
                     }
-                    return userCommandService.verifyPassword(VerifyPasswordRequest.newBuilder()
-                            .setEmail(email)
-                            .setPassword(password)
-                            .build());
+                    return userPort.verifyPassword(email, password);
                 })
                 .chain(verifyRes -> {
-                    if (!verifyRes.getValid()) {
+                    if (!verifyRes.valid()) {
                         return handleFailedLogin(email, failedAttemptsKey, lockKey);
                     }
 
-                    UserResponse user = verifyRes.getUser();
+                    User user = verifyRes.user();
 
-                    String accessToken = jwtUtil.generateToken(user.getEmail(), Collections.singletonList("ROLE_USER"),
-                            (long) user.getId());
-                    String refreshTokenStr = jwtUtil.generateRefreshToken(user.getEmail(), (long) user.getId());
+                    return fetchUserRoles(user.id())
+                            .chain(roles -> {
+                                String accessToken = jwtUtil.generateToken(user.email(), roles,
+                                        (long) user.id());
+                                String refreshTokenStr = jwtUtil.generateRefreshToken(user.email(),
+                                        (long) user.id());
 
-                    RefreshToken rt = new RefreshToken();
-                    rt.setUserId((long) user.getId());
-                    rt.setToken(refreshTokenStr);
-                    rt.setExpiration(new Timestamp(System.currentTimeMillis() + jwtUtil.getRefreshExpirationMs()));
+                                RefreshToken rt = new RefreshToken();
+                                rt.setUserId((long) user.id());
+                                rt.setToken(refreshTokenStr);
+                                rt.setExpiration(new Timestamp(
+                                        System.currentTimeMillis() + jwtUtil.getRefreshExpirationMs()));
 
-                    return redisService.deleteReactive(failedAttemptsKey)
-                            .chain(() -> refreshTokenRepository.deleteByUserId((long) user.getId()))
-                            .chain(() -> refreshTokenRepository.persist(rt))
-                            .map(v -> new String[] { accessToken, refreshTokenStr });
-                })
-                .invoke(tokens -> {
-                    log.info("Successfully logged in user: {}", email);
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "login",
-                            AttributeKey.stringKey("status"), "success"));
-                })
-                .onFailure().invoke(err -> {
-                    log.error("Login failed for email: {}, error: {}", email, err.getMessage());
-                    span.recordException(err);
-                    span.setStatus(StatusCode.ERROR, err.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "login",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), err.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "login"));
-                });
+                                return redisService.deleteReactive(failedAttemptsKey)
+                                        .chain(() -> refreshTokenRepository.deleteByUserId((long) user.id()))
+                                        .chain(() -> refreshTokenRepository.persist(rt))
+                                        .map(v -> new String[] { accessToken, refreshTokenStr });
+                            });
+                }));
     }
 
     @WithTransaction
     public Uni<String[]> refresh(String refreshTokenStr) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("refreshToken")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "auth-service")
-                .setAttribute("operation", "refresh")
-                .startSpan();
+        return tracingMetrics.traceAndMeasure("refreshToken", "refresh", () -> {
+            if (!jwtUtil.validateToken(refreshTokenStr)) {
+                return Uni.createFrom().failure(new RuntimeException("Invalid or expired refresh token"));
+            }
 
-        log.info("Attempting to refresh access token");
-        if (!jwtUtil.validateToken(refreshTokenStr)) {
-            span.setStatus(StatusCode.ERROR, "Invalid or expired refresh token");
-            requestsTotal.add(1, Attributes.of(
-                    AttributeKey.stringKey("operation"), "refresh",
-                    AttributeKey.stringKey("status"), "failed",
-                    AttributeKey.stringKey("error_type"), "invalid_token"));
-            span.end();
-            return Uni.createFrom().failure(new RuntimeException("Invalid or expired refresh token"));
-        }
+            return refreshTokenRepository.findByToken(refreshTokenStr)
+                    .chain(rt -> {
+                        if (rt == null || rt.getExpiration().before(new Timestamp(System.currentTimeMillis()))) {
+                            return Uni.createFrom()
+                                    .failure(new RuntimeException("Refresh token is invalid or expired"));
+                        }
 
-        return refreshTokenRepository.findByToken(refreshTokenStr)
-                .chain(rt -> {
-                    if (rt == null || rt.getExpiration().before(new Timestamp(System.currentTimeMillis()))) {
-                        return Uni.createFrom().failure(new RuntimeException("Refresh token is invalid or expired"));
-                    }
+                        return userPort.findById(rt.getUserId().intValue())
+                                .chain(user -> fetchUserRoles(user.id())
+                                        .chain(roles -> {
+                                            String newAccessToken = jwtUtil.generateToken(user.email(), roles,
+                                                    (long) user.id());
+                                            String newRefreshTokenStr = jwtUtil.generateRefreshToken(user.email(),
+                                                    (long) user.id());
 
-                    return userQueryService
-                            .findById(FindByIdUserRequest.newBuilder().setId(rt.getUserId().intValue()).build())
-                            .chain(userRes -> {
-                                if (!"success".equalsIgnoreCase(userRes.getStatus()) || !userRes.hasData()) {
-                                    return Uni.createFrom().failure(new RuntimeException("User not found"));
-                                }
+                                            rt.setToken(newRefreshTokenStr);
+                                            rt.setExpiration(new Timestamp(System.currentTimeMillis()
+                                                    + jwtUtil.getRefreshExpirationMs()));
 
-                                UserResponse user = userRes.getData();
-                                String newAccessToken = jwtUtil.generateToken(user.getEmail(),
-                                        Collections.singletonList("ROLE_USER"), (long) user.getId());
-                                String newRefreshTokenStr = jwtUtil.generateRefreshToken(user.getEmail(),
-                                        (long) user.getId());
-
-                                rt.setToken(newRefreshTokenStr);
-                                rt.setExpiration(
-                                        new Timestamp(System.currentTimeMillis() + jwtUtil.getRefreshExpirationMs()));
-
-                                return refreshTokenRepository.persist(rt)
-                                        .map(v -> new String[] { newAccessToken, newRefreshTokenStr });
-                            });
-                })
-                .invoke(tokens -> {
-                    log.info("Successfully refreshed access token");
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "refresh",
-                            AttributeKey.stringKey("status"), "success"));
-                })
-                .onFailure().invoke(err -> {
-                    log.error("Token refresh failed, error: {}", err.getMessage());
-                    span.recordException(err);
-                    span.setStatus(StatusCode.ERROR, err.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "refresh",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), err.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "refresh"));
-                });
+                                            return refreshTokenRepository.persist(rt)
+                                                    .map(v -> new String[] { newAccessToken, newRefreshTokenStr });
+                                        }));
+                    });
+        });
     }
 
     @WithTransaction
     public Uni<Void> forgotPassword(String email) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("forgotPassword")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "auth-service")
-                .setAttribute("operation", "forgot_password")
-                .setAttribute("user.email", email)
-                .startSpan();
-
-        log.info("Initiated forgot password process for email: {}", email);
-        return userQueryService
-                .findAll(FindAllUserRequest.newBuilder().setSearch(email).setPage(1).setPageSize(1).build())
-                .chain(findAllResponse -> {
-                    if (findAllResponse.getDataCount() == 0) {
-                        return Uni.createFrom().failure(new RuntimeException("User not found"));
-                    }
-
-                    UserResponse user = findAllResponse.getData(0);
+        return tracingMetrics.traceAndMeasure("forgotPassword", "forgot_password", () -> userPort
+                .findByEmail(email)
+                .chain(user -> {
                     String token = UUID.randomUUID().toString();
 
                     ResetToken resetToken = new ResetToken();
-                    resetToken.setUserId((long) user.getId());
+                    resetToken.setUserId((long) user.id());
                     resetToken.setToken(token);
                     resetToken.setExpiration(new Timestamp(System.currentTimeMillis() + 900000)); // 15 mins
 
-                    return resetTokenRepository.deleteByUserId((long) user.getId())
+                    return resetTokenRepository.deleteByUserId((long) user.id())
                             .chain(() -> resetTokenRepository.persist(resetToken))
                             .chain(() -> sendForgotPasswordEmail(user, token));
-                })
-                .invoke(() -> {
-                    log.info("Successfully sent forgot password token to: {}", email);
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "forgot_password",
-                            AttributeKey.stringKey("status"), "success"));
-                })
-                .onFailure().invoke(err -> {
-                    log.error("ForgotPassword failed for: {}, error: {}", email, err.getMessage());
-                    span.recordException(err);
-                    span.setStatus(StatusCode.ERROR, err.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "forgot_password",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), err.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "forgot_password"));
-                });
+                }));
     }
 
     @WithTransaction
-    public Uni<Void> resetPassword(String token, String password, String confirmPassword) {
-        long startTime = System.currentTimeMillis();
-        Span span = tracer.spanBuilder("resetPassword")
-                .setSpanKind(SpanKind.SERVER)
-                .setAttribute("service.name", "auth-service")
-                .setAttribute("operation", "reset_password")
-                .startSpan();
+    public Uni<Void> resetPassword(ResetPasswordRequest req) {
+        String token = req.getToken();
+        String password = req.getPassword();
+        String confirmPassword = req.getConfirmPassword();
 
-        log.info("Attempting reset password using reset token");
-        if (!password.equals(confirmPassword)) {
-            span.setStatus(StatusCode.ERROR, "Passwords do not match");
-            requestsTotal.add(1, Attributes.of(
-                    AttributeKey.stringKey("operation"), "reset_password",
-                    AttributeKey.stringKey("status"), "failed",
-                    AttributeKey.stringKey("error_type"), "password_mismatch"));
-            span.end();
-            return Uni.createFrom().failure(new RuntimeException("Passwords do not match"));
-        }
+        return tracingMetrics.traceAndMeasure("resetPassword", "reset_password", () -> {
+            if (!password.equals(confirmPassword)) {
+                return Uni.createFrom().failure(new RuntimeException("Passwords do not match"));
+            }
 
-        return resetTokenRepository.findByToken(token)
-                .chain(rt -> {
-                    if (rt == null || rt.getExpiration().before(new Timestamp(System.currentTimeMillis()))) {
-                        return Uni.createFrom().failure(new RuntimeException("Invalid or expired reset token"));
-                    }
+            return resetTokenRepository.findByToken(token)
+                    .chain(rt -> {
+                        if (rt == null || rt.getExpiration().before(new Timestamp(System.currentTimeMillis()))) {
+                            return Uni.createFrom().failure(new RuntimeException("Invalid or expired reset token"));
+                        }
 
-                    return userQueryService
-                            .findById(FindByIdUserRequest.newBuilder().setId(rt.getUserId().intValue()).build())
-                            .chain(userRes -> {
-                                if (!"success".equalsIgnoreCase(userRes.getStatus()) || !userRes.hasData()) {
-                                    return Uni.createFrom().failure(new RuntimeException("User not found"));
-                                }
-
-                                UserResponse user = userRes.getData();
-                                UpdateUserRequest updateReq = UpdateUserRequest.newBuilder()
-                                        .setId(user.getId())
-                                        .setFirstname(user.getFirstname())
-                                        .setLastname(user.getLastname())
-                                        .setEmail(user.getEmail())
-                                        .setPassword(password)
-                                        .setConfirmPassword(confirmPassword)
-                                        .build();
-
-                                return userCommandService.update(updateReq);
-                            })
-                            .chain(updateRes -> {
-                                if (!"success".equalsIgnoreCase(updateRes.getStatus())) {
-                                    return Uni.createFrom().failure(new RuntimeException(updateRes.getMessage()));
-                                }
-                                return resetTokenRepository.delete(rt);
-                            })
-                            .replaceWithVoid();
-                })
-                .invoke(() -> {
-                    log.info("Successfully reset password");
-                    span.setStatus(StatusCode.OK);
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "reset_password",
-                            AttributeKey.stringKey("status"), "success"));
-                })
-                .onFailure().invoke(err -> {
-                    log.error("Password reset failed, error: {}", err.getMessage());
-                    span.recordException(err);
-                    span.setStatus(StatusCode.ERROR, err.getMessage());
-                    requestsTotal.add(1, Attributes.of(
-                            AttributeKey.stringKey("operation"), "reset_password",
-                            AttributeKey.stringKey("status"), "failed",
-                            AttributeKey.stringKey("error_type"), err.getClass().getSimpleName()));
-                })
-                .eventually(() -> {
-                    span.end();
-                    double duration = (System.currentTimeMillis() - startTime) / 1000.0;
-                    requestDurationSeconds.record(duration, Attributes.of(
-                            AttributeKey.stringKey("operation"), "reset_password"));
-                });
+                        return userPort.findById(rt.getUserId().intValue())
+                                .chain(user -> userPort.updatePassword(user.id(), password))
+                                .chain(() -> resetTokenRepository.delete(rt))
+                                .replaceWithVoid();
+                    });
+        });
     }
 
     @WithTransaction
     public Uni<Void> logout(String refreshTokenStr) {
-        log.info("Attempting logout");
-        return refreshTokenRepository.deleteByToken(refreshTokenStr)
-                .replaceWithVoid()
-                .invoke(() -> log.info("Successfully logged out"))
-                .onFailure().invoke(err -> log.error("Logout failed, error: {}", err.getMessage()));
+        return tracingMetrics.traceAndMeasure("logout", "logout",
+                () -> refreshTokenRepository.deleteByToken(refreshTokenStr)
+                        .replaceWithVoid());
     }
 
     public Uni<Void> verifyEmailByCode(String code) {
-        log.info("Attempting email verification with code: {}", code);
-        String key = "verification_code:" + code;
-        return redisService.getReactive(key)
-                .chain(email -> {
-                    if (email == null) {
-                        return Uni.createFrom().failure(new RuntimeException("Invalid or expired verification code"));
-                    }
-                    return redisService.deleteReactive(key)
-                            .chain(() -> redisService.deleteReactive("verification:" + email))
-                            .replaceWithVoid();
-                })
-                .invoke(() -> log.info("Successfully verified email for code: {}", code))
-                .onFailure()
-                .invoke(err -> log.error("Email verification failed for code: {}, error: {}", code, err.getMessage()));
+        return tracingMetrics.traceAndMeasure("verifyEmailByCode", "verify_email", () -> {
+            String key = "verification_code:" + code;
+            return redisService.getReactive(key)
+                    .chain(email -> {
+                        if (email == null) {
+                            return Uni.createFrom()
+                                    .failure(new RuntimeException("Invalid or expired verification code"));
+                        }
+                        return redisService.deleteReactive(key)
+                                .chain(() -> redisService.deleteReactive("verification:" + email))
+                                .replaceWithVoid();
+                    });
+        });
     }
 
-    public Uni<UserResponse> getMe(Long userId) {
-        log.info("Fetching profile for user ID: {}", userId);
-        return userQueryService.findById(FindByIdUserRequest.newBuilder().setId(userId.intValue()).build())
-                .map(res -> {
-                    if (!"success".equalsIgnoreCase(res.getStatus()) || !res.hasData()) {
-                        throw new RuntimeException("User not found");
+    public Uni<User> getMe(Long userId) {
+        return tracingMetrics.traceAndMeasure("getMe", "get_me",
+                () -> userPort.findById(userId.intValue()));
+    }
+
+    /**
+     * Loads the user's real role names from the role service so the JWT carries
+     * actual roles (e.g. ROLE_ADMIN) instead of a hardcoded ROLE_USER.
+     * Falls back to ROLE_USER when no roles are assigned or the role service is
+     * unavailable, so login/refresh never break.
+     */
+    private Uni<List<String>> fetchUserRoles(int userId) {
+        return userRolePort
+                .findByUserId(userId)
+                .map(roles -> {
+                    List<String> names = new ArrayList<>();
+                    if (roles != null) {
+                        for (Role r : roles) {
+                            String name = r.name();
+                            if (name != null && !name.isBlank()) {
+                                names.add(name);
+                            }
+                        }
                     }
-                    return res.getData();
+                    return names.isEmpty() ? Collections.singletonList("ROLE_USER") : names;
                 })
-                .invoke(user -> log.info("Successfully retrieved profile for user: {}", user.getEmail()))
-                .onFailure().invoke(err -> log.error("Failed to retrieve profile for user ID: {}, error: {}", userId,
-                        err.getMessage()));
+                .onFailure().recoverWithItem(err -> {
+                    LOGGER.warn("Failed to load roles for user {}, falling back to ROLE_USER: {}",
+                            userId, err.getMessage());
+                    return Collections.singletonList("ROLE_USER");
+                });
     }
 
     private Uni<String[]> handleFailedLogin(String email, String failedAttemptsKey, String lockKey) {
-        log.warn("Failed login attempt for email: {}", email);
         return redisService.getReactive(failedAttemptsKey)
                 .chain(attemptsStr -> {
                     int currentAttempts = attemptsStr == null ? 0 : Integer.parseInt(attemptsStr);
                     int newAttempts = currentAttempts + 1;
                     if (newAttempts >= 5) {
-                        log.error("Account locked due to 5 consecutive failed login attempts: {}", email);
                         return redisService.setWithExpirationReactive(lockKey, "true", 3600) // lock 1 hr
                                 .chain(() -> redisService.deleteReactive(failedAttemptsKey))
                                 .chain(() -> Uni.createFrom().failure(
                                         new RuntimeException("Account is locked due to too many failed attempts")));
                     } else {
-                        log.warn("Incrementing failed login attempts for email: {}. Current failed attempts: {}", email,
-                                newAttempts);
                         return redisService
                                 .setWithExpirationReactive(failedAttemptsKey, String.valueOf(newAttempts), 600) // 10
                                                                                                                 // mins
@@ -530,33 +309,51 @@ public class AuthService {
                 });
     }
 
-    private Uni<Void> sendWelcomeEmail(UserResponse user, String code) {
+    private Uni<Void> sendWelcomeEmail(User user, String code) {
         String subject = "Welcome to Quarkus Modular Monolith";
         String body = String.format(
                 "Hello %s %s,\n\nWelcome to our platform! Use the following code to verify your email address:\n\n%s\n\nRegards,\nSupport Team",
-                user.getFirstname(), user.getLastname(), code
-        );
+                user.firstname(), user.lastname(), code);
 
         JsonObject payload = new JsonObject()
-                .put("email", user.getEmail())
+                .put("email", user.email())
                 .put("subject", subject)
                 .put("body", body);
 
-        return kafkaService.sendMessage("email-service-topic-auth-register", user.getEmail(), payload);
+        return enqueueOutbox("email-service-topic-auth-register", user.email(), payload);
     }
 
-    private Uni<Void> sendForgotPasswordEmail(UserResponse user, String token) {
+    private Uni<Void> sendForgotPasswordEmail(User user, String token) {
         String subject = "Reset Password Verification";
         String body = String.format(
                 "Hello %s %s,\n\nYou have requested a password reset. Use the following token to reset your password:\n\n%s\n\nThis token will expire in 15 minutes.\n\nRegards,\nSupport Team",
-                user.getFirstname(), user.getLastname(), token
-        );
+                user.firstname(), user.lastname(), token);
 
         JsonObject payload = new JsonObject()
-                .put("email", user.getEmail())
+                .put("email", user.email())
                 .put("subject", subject)
                 .put("body", body);
 
-        return kafkaService.sendMessage("email-service-topic-auth-forgot-password", user.getEmail(), payload);
+        return enqueueOutbox("email-service-topic-auth-forgot-password", user.email(), payload);
+    }
+
+    private Uni<Void> enqueueOutbox(String topic, String email, JsonObject payload) {
+        String eventId = UUID.randomUUID().toString();
+        JsonObject eventPayload = payload.copy()
+                .put("event_id", eventId)
+                .put("schema_version", 1)
+                .put("event_type", topic)
+                .put("occurred_at", java.time.Instant.now().toString());
+
+        if (authOutboxRepository == null) {
+            return kafkaService.sendExistingEvent(topic, email, eventPayload);
+        }
+
+        AuthOutbox event = new AuthOutbox();
+        event.setEventId(eventId);
+        event.setTopic(topic);
+        event.setEventKey(email);
+        event.setPayload(eventPayload.encode());
+        return authOutboxRepository.persist(event).replaceWithVoid();
     }
 }

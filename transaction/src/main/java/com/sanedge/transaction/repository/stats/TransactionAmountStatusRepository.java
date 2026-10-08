@@ -38,38 +38,38 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                     t.deleted_at IS NULL
                     AND t.payment_status = 'SUCCESS'
                     AND (
-                        (t.created_at >= PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd')
-                         AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd')))
+                        (t.created_at >= MAKE_DATE(?1, ?2, 1)
+                         AND t.created_at < (MAKE_DATE(?1, ?2, 1) + INTERVAL '1 month'))
                         OR
-                        (t.created_at >= PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd')
-                         AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd')))
+                        (t.created_at >= MAKE_DATE(?3, ?4, 1)
+                         AND t.created_at < (MAKE_DATE(?3, ?4, 1) + INTERVAL '1 month'))
                     )
-                GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER), CAST(EXTRACT(MONTH FROM t.created_at) AS INTEGER)
+                GROUP BY 1, 2
             ),
             formatted_data AS (
                 SELECT
                     CAST("year" AS VARCHAR) AS "year",
-                    FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST("month" AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM') AS "month",
+                    TO_CHAR(MAKE_DATE(2000, "month", 1), 'Mon') AS "month",
                     CAST(total_success AS BIGINT) AS totalSuccess,
                     CAST(total_amount AS BIGINT) AS totalAmount,
                     "year" AS "sort_year",
                     "month" AS "sort_month"
                 FROM monthly_data
                 UNION ALL
-                SELECT CAST(:year AS VARCHAR),
-                       FORMATDATETIME(PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd'), 'MMM'),
-                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), :year, :month
+                SELECT ?5,
+                       TO_CHAR(MAKE_DATE(2000, ?2, 1), 'Mon'),
+                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), ?1, ?2
                 WHERE NOT EXISTS (
                     SELECT 1 FROM monthly_data
-                    WHERE "year" = :year AND "month" = :month
+                    WHERE CAST("year" AS VARCHAR) = ?5 AND CAST("month" AS VARCHAR) = ?6
                 )
                 UNION ALL
-                SELECT CAST(:prevYear AS VARCHAR),
-                       FORMATDATETIME(PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd'), 'MMM'),
-                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), :prevYear, :prevMonth
+                SELECT ?7,
+                       TO_CHAR(MAKE_DATE(2000, ?4, 1), 'Mon'),
+                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), ?3, ?4
                 WHERE NOT EXISTS (
                     SELECT 1 FROM monthly_data
-                    WHERE "year" = :prevYear AND "month" = :prevMonth
+                    WHERE CAST("year" AS VARCHAR) = ?7 AND CAST("month" AS VARCHAR) = ?8
                 )
             )
             SELECT "year", "month", totalSuccess, totalAmount FROM formatted_data
@@ -78,10 +78,14 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("year", year);
-            dataQuery.setParameter("month", month);
-            dataQuery.setParameter("prevYear", prevYear);
-            dataQuery.setParameter("prevMonth", prevMonth);
+            dataQuery.setParameter(1, year);
+            dataQuery.setParameter(2, month);
+            dataQuery.setParameter(3, prevYear);
+            dataQuery.setParameter(4, prevMonth);
+            dataQuery.setParameter(5, year.toString());
+            dataQuery.setParameter(6, month.toString());
+            dataQuery.setParameter(7, prevYear.toString());
+            dataQuery.setParameter(8, prevMonth.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionMonthlyAmountSuccess> list = new ArrayList<>();
@@ -100,6 +104,8 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
     }
 
     public Uni<List<TransactionYearlyAmountSuccess>> findYearlyTransactionSuccess(Integer year) {
+        Integer prevYear = year - 1;
+
         String sql = """
             WITH yearly_data AS (
                 SELECT
@@ -110,9 +116,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                 WHERE
                     t.deleted_at IS NULL
                     AND t.payment_status = 'SUCCESS'
-                    AND (EXTRACT(YEAR FROM t.created_at) = :year
-                         OR EXTRACT(YEAR FROM t.created_at) = :year - 1)
-                GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER)
+                    AND (EXTRACT(YEAR FROM t.created_at) = ?1
+                         OR EXTRACT(YEAR FROM t.created_at) = ?1 - 1)
+                GROUP BY 1
             ),
             formatted_data AS (
                 SELECT
@@ -121,9 +127,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                     CAST(total_amount AS BIGINT) AS totalAmount
                 FROM yearly_data
                 UNION ALL
-                SELECT CAST(:year AS VARCHAR), CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year)
+                SELECT ?2, CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?2)
                 UNION ALL
-                SELECT CAST((:year - 1) AS VARCHAR), CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year - 1)
+                SELECT ?3, CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?3)
             )
             SELECT * FROM formatted_data
             ORDER BY "year" DESC
@@ -131,7 +137,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("year", year);
+            dataQuery.setParameter(1, year);
+            dataQuery.setParameter(2, year.toString());
+            dataQuery.setParameter(3, prevYear.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionYearlyAmountSuccess> list = new ArrayList<>();
@@ -169,38 +177,38 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                     t.deleted_at IS NULL
                     AND t.payment_status = 'FAILED'
                     AND (
-                        (t.created_at >= PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd')
-                         AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd')))
+                        (t.created_at >= MAKE_DATE(?1, ?2, 1)
+                         AND t.created_at < (MAKE_DATE(?1, ?2, 1) + INTERVAL '1 month'))
                         OR
-                        (t.created_at >= PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd')
-                         AND t.created_at < DATEADD('MONTH', 1, PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd')))
+                        (t.created_at >= MAKE_DATE(?3, ?4, 1)
+                         AND t.created_at < (MAKE_DATE(?3, ?4, 1) + INTERVAL '1 month'))
                     )
-                GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER), CAST(EXTRACT(MONTH FROM t.created_at) AS INTEGER)
+                GROUP BY 1, 2
             ),
             formatted_data AS (
                 SELECT
                     CAST("year" AS VARCHAR) AS "year",
-                    FORMATDATETIME(PARSEDATETIME('2000-' || LPAD(CAST("month" AS VARCHAR), 2, '0') || '-01', 'yyyy-MM-dd'), 'MMM') AS "month",
+                    TO_CHAR(MAKE_DATE(2000, "month", 1), 'Mon') AS "month",
                     CAST(total_failed AS BIGINT) AS totalFailed,
                     CAST(total_amount AS BIGINT) AS totalAmount,
                     "year" AS "sort_year",
                     "month" AS "sort_month"
                 FROM monthly_data
                 UNION ALL
-                SELECT CAST(:year AS VARCHAR),
-                       FORMATDATETIME(PARSEDATETIME(CAST(:year AS VARCHAR) || '-' || CAST(:month AS VARCHAR) || '-01', 'yyyy-M-dd'), 'MMM'),
-                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), :year, :month
+                SELECT ?5,
+                       TO_CHAR(MAKE_DATE(2000, ?2, 1), 'Mon'),
+                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), ?1, ?2
                 WHERE NOT EXISTS (
                     SELECT 1 FROM monthly_data
-                    WHERE "year" = :year AND "month" = :month
+                    WHERE CAST("year" AS VARCHAR) = ?5 AND CAST("month" AS VARCHAR) = ?6
                 )
                 UNION ALL
-                SELECT CAST(:prevYear AS VARCHAR),
-                       FORMATDATETIME(PARSEDATETIME(CAST(:prevYear AS VARCHAR) || '-' || CAST(:prevMonth AS VARCHAR) || '-01', 'yyyy-M-dd'), 'MMM'),
-                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), :prevYear, :prevMonth
+                SELECT ?7,
+                       TO_CHAR(MAKE_DATE(2000, ?4, 1), 'Mon'),
+                       CAST(0 AS BIGINT), CAST(0 AS BIGINT), ?3, ?4
                 WHERE NOT EXISTS (
                     SELECT 1 FROM monthly_data
-                    WHERE "year" = :prevYear AND "month" = :prevMonth
+                    WHERE CAST("year" AS VARCHAR) = ?7 AND CAST("month" AS VARCHAR) = ?8
                 )
             )
             SELECT "year", "month", totalFailed, totalAmount FROM formatted_data
@@ -209,10 +217,14 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("year", year);
-            dataQuery.setParameter("month", month);
-            dataQuery.setParameter("prevYear", prevYear);
-            dataQuery.setParameter("prevMonth", prevMonth);
+            dataQuery.setParameter(1, year);
+            dataQuery.setParameter(2, month);
+            dataQuery.setParameter(3, prevYear);
+            dataQuery.setParameter(4, prevMonth);
+            dataQuery.setParameter(5, year.toString());
+            dataQuery.setParameter(6, month.toString());
+            dataQuery.setParameter(7, prevYear.toString());
+            dataQuery.setParameter(8, prevMonth.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionMonthlyAmountFailed> list = new ArrayList<>();
@@ -231,6 +243,8 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
     }
 
     public Uni<List<TransactionYearlyAmountFailed>> findYearlyTransactionFailed(Integer year) {
+        Integer prevYear = year - 1;
+
         String sql = """
             WITH yearly_data AS (
                 SELECT
@@ -241,9 +255,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                 WHERE
                     t.deleted_at IS NULL
                     AND t.payment_status = 'FAILED'
-                    AND (EXTRACT(YEAR FROM t.created_at) = :year
-                         OR EXTRACT(YEAR FROM t.created_at) = :year - 1)
-                GROUP BY CAST(EXTRACT(YEAR FROM t.created_at) AS INTEGER)
+                    AND (EXTRACT(YEAR FROM t.created_at) = ?1
+                         OR EXTRACT(YEAR FROM t.created_at) = ?1 - 1)
+                GROUP BY 1
             ),
             formatted_data AS (
                 SELECT
@@ -252,9 +266,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
                     CAST(total_amount AS BIGINT) AS totalAmount
                 FROM yearly_data
                 UNION ALL
-                SELECT CAST(:year AS VARCHAR), CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year)
+                SELECT ?2, CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?2)
                 UNION ALL
-                SELECT CAST((:year - 1) AS VARCHAR), CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE "year" = :year - 1)
+                SELECT ?3, CAST(0 AS BIGINT), CAST(0 AS BIGINT) WHERE NOT EXISTS (SELECT 1 FROM yearly_data WHERE CAST("year" AS VARCHAR) = ?3)
             )
             SELECT * FROM formatted_data
             ORDER BY "year" DESC
@@ -262,7 +276,9 @@ public class TransactionAmountStatusRepository implements PanacheRepository<Tran
 
         return Panache.getSession().chain(session -> {
             var dataQuery = session.createNativeQuery(sql);
-            dataQuery.setParameter("year", year);
+            dataQuery.setParameter(1, year);
+            dataQuery.setParameter(2, year.toString());
+            dataQuery.setParameter(3, prevYear.toString());
 
             return dataQuery.getResultList().map(results -> {
                 List<TransactionYearlyAmountFailed> list = new ArrayList<>();

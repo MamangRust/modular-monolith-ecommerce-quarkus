@@ -7,6 +7,7 @@ import com.sanedge.review.domain.response.ReviewResponseDeleteAt;
 import com.sanedge.review.service.ReviewCommandService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import pb.review.ReviewCommon.ApiResponseReviewDeleteAt;
 import pb.review.ReviewCommon.ApiResponseReviewDelete;
 import pb.review.ReviewCommon.ApiResponseReviewAll;
 import pb.review.ReviewCommon.FindByIdReviewRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -27,6 +29,12 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
 
     @Override
     public Uni<ApiResponseReview> create(pb.review.ReviewCommand.CreateReviewRequest request) {
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
+        if (request.getProductId() <= 0) {
+            return IdValidator.invalid("Product id");
+        }
         CreateReviewRequest domainReq = new CreateReviewRequest();
         domainReq.setUserId(request.getUserId());
         domainReq.setProductId(request.getProductId());
@@ -44,11 +52,14 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
     public Uni<ApiResponseReview> update(pb.review.ReviewCommand.UpdateReviewRequest request) {
+        if (request.getReviewId() <= 0) {
+            return IdValidator.invalid("Review id");
+        }
         UpdateReviewRequest domainReq = new UpdateReviewRequest();
         domainReq.setReviewId(request.getReviewId());
         domainReq.setName(request.getName());
@@ -69,12 +80,15 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseReviewDeleteAt> trashedReview(FindByIdReviewRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewCommandService.trash(request.getId())
                 .map(apiResp -> {
                     ApiResponseReviewDeleteAt.Builder builder = ApiResponseReviewDeleteAt.newBuilder()
@@ -89,12 +103,15 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseReviewDeleteAt> restoreReview(FindByIdReviewRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewCommandService.restore(request.getId())
                 .map(apiResp -> {
                     ApiResponseReviewDeleteAt.Builder builder = ApiResponseReviewDeleteAt.newBuilder()
@@ -109,12 +126,15 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
     public Uni<ApiResponseReviewDelete> deleteReviewPermanent(FindByIdReviewRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return reviewCommandService.delete(request.getId())
                 .map(apiResp -> ApiResponseReviewDelete.newBuilder()
                         .setStatus(apiResp.status())
@@ -124,7 +144,7 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
@@ -135,7 +155,7 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
@@ -145,7 +165,7 @@ public class ReviewCommandGrpcHandler extends MutinyReviewCommandServiceGrpc.Rev
                         .setStatus(apiResp.status())
                         .setMessage(apiResp.message())
                         .build())
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.review.ReviewCommon.ReviewResponse toProto(ReviewResponse r) {

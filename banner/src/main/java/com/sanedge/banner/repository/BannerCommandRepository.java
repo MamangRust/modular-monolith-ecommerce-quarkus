@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @ApplicationScoped
 public class BannerCommandRepository implements PanacheRepository<Banner> {
     @WithTransaction
-    public Uni<Banner> trashed(Long bannerId) {
+    public Uni<Banner> trash(Long bannerId) {
         return findById(bannerId)
                 .chain(banner -> {
                     if (banner != null && banner.getDeletedAt() == null) {
@@ -36,13 +36,13 @@ public class BannerCommandRepository implements PanacheRepository<Banner> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long bannerId) {
+    public Uni<Banner> deletePermanent(Long bannerId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", bannerId).firstResult()
                 .chain(banner -> {
                     if (banner != null) {
-                        return delete(banner).map(v -> true);
+                        return delete(banner).map(v -> banner);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

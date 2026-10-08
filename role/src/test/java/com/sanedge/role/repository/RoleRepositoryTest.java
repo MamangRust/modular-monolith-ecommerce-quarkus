@@ -2,369 +2,325 @@ package com.sanedge.role.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sanedge.role.entity.Role;
 import com.sanedge.role.domain.requests.FindAllRoles;
-import com.sanedge.common.domain.response.PagedResult;
+import com.sanedge.role.entity.Role;
 
+import com.sanedge.common.test.PostgreSqlResource;
+import io.quarkus.test.common.QuarkusTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.TestReactiveTransaction;
+import io.quarkus.test.vertx.UniAsserter;
+import io.smallrye.mutiny.Uni;
+import jakarta.inject.Inject;
+import org.hibernate.reactive.mutiny.Mutiny;
 
 @QuarkusTest
+@QuarkusTestResource(PostgreSqlResource.class)
 @TestReactiveTransaction
 class RoleRepositoryTest {
 
     @Inject
     RoleRepository roleRepository;
 
-    // --- Helper Method untuk membuat role secara instan ---
-    private Role createAndPersistRole(String roleName) {
+    /**
+     * The {@link com.sanedge.role.config.RoleSeeder} keeps the base roles
+     * (ROLE_USER, ROLE_STAFF, ROLE_ADMIN) present in the database at startup.
+     * Tests that assert on exact counts must remove them first.
+     */
+    private Uni<Void> clean() {
+        return roleRepository.deleteAll().replaceWithVoid();
+    }
+
+    private Uni<Role> createAndPersistRole(String roleName) {
         Role role = new Role();
         role.setRoleName(roleName);
-        return roleRepository.persist(role).await().indefinitely();
+        return roleRepository.persist(role).replaceWith(role);
     }
 
-    // ==========================================
-    // 1. BASIC CRUD & FINDER TESTS
-    // ==========================================
-
-    @Test
-    void testCreateAndFindById() {
-        Role saved = createAndPersistRole("Admin");
-
-        assertThat(saved).isNotNull();
-        assertThat(saved.id).isNotNull();
-        assertThat(saved.getRoleName()).isEqualTo("Admin");
-
-        Role found = roleRepository.findById(saved.id)
-                .await().indefinitely();
-
-        assertThat(found).isNotNull();
-        assertThat(found.getRoleName()).isEqualTo("Admin");
-    }
-
-    @Test
-    void testFindByRoleName() {
-        createAndPersistRole("Editor");
-
-        Role found = roleRepository.findByRoleName("Editor")
-                .await().indefinitely();
-
-        assertThat(found).isNotNull();
-        assertThat(found.getRoleName()).isEqualTo("Editor");
-    }
-
-    @Test
-    void testFindByRoleNameReturnsNullWhenNotFound() {
-        Role notFound = roleRepository.findByRoleName("NonExistentRole")
-                .await().indefinitely();
-
-        assertThat(notFound).isNull();
-    }
-
-    @Test
-    void testFindByIdReturnsNullWhenNotFound() {
-        Role notFound = roleRepository.findById(99999L)
-                .await().indefinitely();
-
-        assertThat(notFound).isNull();
-    }
-
-    // ==========================================
-    // 2. SOFT DELETE (TRASH) TESTS
-    // ==========================================
-
-    @Test
-    void testTrashRole() {
-        Role saved = createAndPersistRole("TrashMe");
-        assertThat(saved.getDeletedAt()).isNull();
-
-        Role trashed = roleRepository.trash(saved.id).await().indefinitely();
-
-        assertThat(trashed).isNotNull();
-        assertThat(trashed.getDeletedAt()).isNotNull();
-    }
-
-    @Test
-    void testTrashRoleReturnsNullIfAlreadyTrashed() {
-        Role saved = createAndPersistRole("TrashMe2");
-        roleRepository.trash(saved.id).await().indefinitely(); // Trash pertama
-
-        // Trash kedua harusnya return null
-        Role trashedAgain = roleRepository.trash(saved.id).await().indefinitely();
-        assertThat(trashedAgain).isNull();
-    }
-
-    @Test
-    void testTrashRoleReturnsNullIfNotFound() {
-        Role trashed = roleRepository.trash(99999L).await().indefinitely();
-        assertThat(trashed).isNull();
-    }
-
-    // ==========================================
-    // 3. RESTORE TESTS
-    // ==========================================
-
-    @Test
-    void testRestoreRole() {
-        Role saved = createAndPersistRole("RestoreMe");
-        roleRepository.trash(saved.id).await().indefinitely();
-
-        Role restored = roleRepository.restore(saved.id).await().indefinitely();
-
-        assertThat(restored).isNotNull();
-        assertThat(restored.getDeletedAt()).isNull();
-    }
-
-    @Test
-    void testRestoreRoleReturnsNullIfNotTrashed() {
-        Role saved = createAndPersistRole("RestoreMe2");
-        // Tidak di-trash langsung restore
-
-        Role restored = roleRepository.restore(saved.id).await().indefinitely();
-        assertThat(restored).isNull();
-    }
-
-    // ==========================================
-    // 4. PERMANENT DELETE TESTS
-    // ==========================================
-
-    @Test
-    void testDeletePermanent() {
-        Role saved = createAndPersistRole("DeleteMe");
-        roleRepository.trash(saved.id).await().indefinitely();
-
-        Role deleted = roleRepository.deletePermanent(saved.id).await().indefinitely();
-        assertThat(deleted).isNotNull();
-
-        // Pastikan benar-benar hilang dari database
-        Role checkDb = roleRepository.findById(saved.id).await().indefinitely();
-        assertThat(checkDb).isNull();
-    }
-
-    @Test
-    void testDeletePermanentFailsIfNotTrashed() {
-        Role saved = createAndPersistRole("DeleteMe2");
-        // Tidak di-trash, langsung permanent delete
-
-        Role deleted = roleRepository.deletePermanent(saved.id).await().indefinitely();
-        assertThat(deleted).isNull();
-
-        // Role masih harus ada di database
-        Role checkDb = roleRepository.findById(saved.id).await().indefinitely();
-        assertThat(checkDb).isNotNull();
-    }
-
-    // ==========================================
-    // 5. BULK ACTIONS (RESTORE ALL & DELETE ALL)
-    // ==========================================
-
-    @Test
-    void testRestoreAllDeleted() {
-        Role r1 = createAndPersistRole("BulkRole1");
-        Role r2 = createAndPersistRole("BulkRole2");
-        Role r3 = createAndPersistRole("BulkRole3");
-
-        roleRepository.trash(r1.id).await().indefinitely();
-        roleRepository.trash(r2.id).await().indefinitely();
-        // r3 tidak di-trash
-
-        Boolean result = roleRepository.restoreAllDeleted().await().indefinitely();
-        assertThat(result).isTrue();
-
-        assertThat(roleRepository.findById(r1.id).await().indefinitely().getDeletedAt()).isNull();
-        assertThat(roleRepository.findById(r2.id).await().indefinitely().getDeletedAt()).isNull();
-        assertThat(roleRepository.findById(r3.id).await().indefinitely().getDeletedAt()).isNull(); // Tetap null
-    }
-
-    @Test
-    void testDeleteAllDeleted() {
-        Role r1 = createAndPersistRole("BulkDelRole1");
-        Role r2 = createAndPersistRole("BulkDelRole2");
-        Role r3 = createAndPersistRole("BulkDelRole3");
-
-        roleRepository.trash(r1.id).await().indefinitely();
-        roleRepository.trash(r2.id).await().indefinitely();
-        // r3 tidak di-trash
-
-        Boolean result = roleRepository.deleteAllDeleted().await().indefinitely();
-        assertThat(result).isTrue();
-
-        assertThat(roleRepository.findById(r1.id).await().indefinitely()).isNull();
-        assertThat(roleRepository.findById(r2.id).await().indefinitely()).isNull();
-        assertThat(roleRepository.findById(r3.id).await().indefinitely()).isNotNull(); // Masih aman
-    }
-
-    // ==========================================
-    // 6. PAGED & FILTERED QUERIES TESTS
-    // ==========================================
-
-    @Test
-    void testFindActiveRoles() {
-        createAndPersistRole("ActiveRole1");
-        Role trashed = createAndPersistRole("TrashedRole1");
-        roleRepository.trash(trashed.id).await().indefinitely();
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-
-        PagedResult<Role> result = roleRepository.findActiveRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(1);
-        assertThat(result.getData().get(0).getRoleName()).isEqualTo("ActiveRole1");
-        assertThat(result.getTotalRecords()).isEqualTo(1);
-    }
-
-    @Test
-    void testFindTrashedRoles() {
-        Role trashed = createAndPersistRole("TrashedRole2");
-        createAndPersistRole("ActiveRole2");
-        roleRepository.trash(trashed.id).await().indefinitely();
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-
-        PagedResult<Role> result = roleRepository.findTrashedRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(1);
-        assertThat(result.getData().get(0).getRoleName()).isEqualTo("TrashedRole2");
-    }
-
-    @Test
-    void testFindRolesWithSearchKeyword() {
-        createAndPersistRole("SuperAdmin");
-        createAndPersistRole("SuperEditor");
-        createAndPersistRole("Viewer");
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch("Super"); // Harusnya menemukan SuperAdmin dan SuperEditor
-
-        PagedResult<Role> result = roleRepository.findRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(2);
-        assertThat(result.getTotalRecords()).isEqualTo(2);
-    }
-
-    @Test
-    void testFindActiveRolesWithSearchKeyword() {
-        createAndPersistRole("AdminPanel");
-        Role trashedAdmin = createAndPersistRole("AdminTrashed");
-        roleRepository.trash(trashedAdmin.id).await().indefinitely();
-        createAndPersistRole("ViewerPanel");
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch("Admin"); // Hanya AdminPanel yang aktif, AdminTrashed sudah di-trash
-
-        PagedResult<Role> result = roleRepository.findActiveRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(1);
-        assertThat(result.getData().get(0).getRoleName()).isEqualTo("AdminPanel");
-    }
-
-    @Test
-    void testFindTrashedRolesWithSearchKeyword() {
-        Role trashedAdmin = createAndPersistRole("TrashedAdmin");
-        createAndPersistRole("ActiveAdmin");
-        roleRepository.trash(trashedAdmin.id).await().indefinitely();
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch("Admin"); // Hanya TrashedAdmin yang di-trash
-
-        PagedResult<Role> result = roleRepository.findTrashedRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(1);
-        assertThat(result.getData().get(0).getRoleName()).isEqualTo("TrashedAdmin");
-    }
-
-    @Test
-    void testFindRolesWithPagination() {
-        // Membuat 5 role
-        for (int i = 1; i <= 5; i++) {
-            createAndPersistRole("PageRole" + i);
+    // A Hibernate Reactive session is not thread-safe, so entities must be
+    // persisted sequentially instead of via Uni.combine().all()/Uni.join().all()
+    // which subscribe in parallel.
+    private Uni<List<Role>> createAndPersistRoles(String... names) {
+        Uni<List<Role>> chain = Uni.createFrom().item(new ArrayList<Role>());
+        for (String name : names) {
+            chain = chain.chain(roles -> createAndPersistRole(name)
+                    .invoke(roles::add)
+                    .replaceWith(roles));
         }
-
-        FindAllRoles reqPage1 = new FindAllRoles();
-        reqPage1.setPage(1);
-        reqPage1.setPageSize(2);
-
-        PagedResult<Role> page1 = roleRepository.findRoles(reqPage1).await().indefinitely();
-
-        assertThat(page1.getData()).hasSize(2);
-        assertThat(page1.getTotalRecords()).isEqualTo(5);
-
-        FindAllRoles reqPage2 = new FindAllRoles();
-        reqPage2.setPage(2);
-        reqPage2.setPageSize(2);
-
-        PagedResult<Role> page2 = roleRepository.findRoles(reqPage2).await().indefinitely();
-
-        assertThat(page2.getData()).hasSize(2);
-        // Memastikan ini halaman berikutnya (bukan data yang sama dengan halaman 1)
-        assertThat(page2.getData().get(0).getRoleName()).isNotIn(page1.getData().get(0).getRoleName(),
-                page1.getData().get(1).getRoleName());
+        return chain;
     }
 
-    @Test
-    void testFindRolesWithEmptySearchReturnsAll() {
-        createAndPersistRole("RoleA");
-        createAndPersistRole("RoleB");
+    private Uni<Void> trashSequentially(List<Role> roles) {
+        Uni<Void> chain = Uni.createFrom().voidItem();
+        for (Role role : roles) {
+            chain = chain.chain(() -> roleRepository.trash(role.id).replaceWithVoid());
+        }
+        return chain;
+    }
 
+    private Uni<Void> clearSession() {
+        return roleRepository.getSession().invoke(Mutiny.Session::clear).replaceWithVoid();
+    }
+
+    private Uni<List<Role>> reload(List<Role> roles) {
+        Uni<List<Role>> chain = Uni.createFrom().item(new ArrayList<Role>());
+        for (Role role : roles) {
+            chain = chain.chain(list -> roleRepository.findById(role.id)
+                    .invoke(list::add)
+                    .replaceWith(list));
+        }
+        return chain;
+    }
+
+    private FindAllRoles pageRequest(int page, int pageSize, String search) {
         FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch("");
-
-        PagedResult<Role> result = roleRepository.findRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(2);
+        req.setPage(page);
+        req.setPageSize(pageSize);
+        req.setSearch(search);
+        return req;
     }
 
     @Test
-    void testFindRolesWithNullSearchReturnsAll() {
-        createAndPersistRole("RoleC");
-        createAndPersistRole("RoleD");
-
-        FindAllRoles req = new FindAllRoles();
-        req.setPage(1);
-        req.setPageSize(10);
-        req.setSearch(null);
-
-        PagedResult<Role> result = roleRepository.findRoles(req).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(2);
+    void testCreateAndFindById(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("Admin")
+                .invoke(saved -> {
+                    assertThat(saved).isNotNull();
+                    assertThat(saved.id).isNotNull();
+                    assertThat(saved.getRoleName()).isEqualTo("Admin");
+                })
+                .chain(saved -> roleRepository.findById(saved.id))
+                .invoke(found -> {
+                    assertThat(found).isNotNull();
+                    assertThat(found.getRoleName()).isEqualTo("Admin");
+                })
+                .replaceWithVoid());
     }
 
     @Test
-    void testFindRolesSearchCaseInsensitive() {
-        createAndPersistRole("ManagerRole");
-
-        FindAllRoles reqLower = new FindAllRoles();
-        reqLower.setPage(1);
-        reqLower.setPageSize(10);
-        reqLower.setSearch("manager"); // lowercase
-
-        PagedResult<Role> result = roleRepository.findRoles(reqLower).await().indefinitely();
-
-        assertThat(result.getData()).hasSize(1);
-        assertThat(result.getData().get(0).getRoleName()).isEqualTo("ManagerRole");
+    void testFindByRoleName(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("Editor")
+                .chain(ignored -> roleRepository.findByRoleName("Editor"))
+                .invoke(found -> {
+                    assertThat(found).isNotNull();
+                    assertThat(found.getRoleName()).isEqualTo("Editor");
+                })
+                .replaceWithVoid());
     }
 
     @Test
-    void testFindUserRolesReturnsEmptyWhenNoMapping() {
-        // Tidak ada user-role mapping untuk userId 99999
-        var result = roleRepository.findUserRoles(99999L).await().indefinitely();
+    void testFindByRoleNameReturnsNullWhenNotFound(UniAsserter asserter) {
+        asserter.execute(() -> roleRepository.findByRoleName("NonExistentRole")
+                .invoke(notFound -> assertThat(notFound).isNull())
+                .replaceWithVoid());
+    }
 
-        assertThat(result).isEmpty();
+    @Test
+    void testFindByIdReturnsNullWhenNotFound(UniAsserter asserter) {
+        asserter.execute(() -> roleRepository.findById(99999L)
+                .invoke(notFound -> assertThat(notFound).isNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindUserRolesReturnsEmptyWhenNoMapping(UniAsserter asserter) {
+        asserter.execute(() -> roleRepository.findUserRoles(99999L)
+                .invoke(result -> assertThat(result).isEmpty())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testTrashRole(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("TrashMe")
+                .invoke(saved -> assertThat(saved.getDeletedAt()).isNull())
+                .chain(saved -> roleRepository.trash(saved.id))
+                .invoke(trashed -> {
+                    assertThat(trashed).isNotNull();
+                    assertThat(trashed.getDeletedAt()).isNotNull();
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testTrashRoleReturnsNullIfAlreadyTrashed(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("TrashMe2")
+                .chain(saved -> roleRepository.trash(saved.id)
+                        .chain(ignored -> roleRepository.trash(saved.id)))
+                .invoke(trashedAgain -> assertThat(trashedAgain).isNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testTrashRoleReturnsNullIfNotFound(UniAsserter asserter) {
+        asserter.execute(() -> roleRepository.trash(99999L)
+                .invoke(trashed -> assertThat(trashed).isNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testRestoreRole(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("RestoreMe")
+                .chain(saved -> roleRepository.trash(saved.id)
+                        .chain(ignored -> roleRepository.restore(saved.id)))
+                .invoke(restored -> {
+                    assertThat(restored).isNotNull();
+                    assertThat(restored.getDeletedAt()).isNull();
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testRestoreRoleReturnsNullIfNotTrashed(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("RestoreMe2")
+                .chain(saved -> roleRepository.restore(saved.id))
+                .invoke(restored -> assertThat(restored).isNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testDeletePermanent(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("DeleteMe")
+                .chain(saved -> roleRepository.trash(saved.id)
+                        .chain(ignored -> roleRepository.deletePermanent(saved.id))
+                        .chain(deleted -> {
+                            assertThat(deleted).isNotNull();
+                            return roleRepository.findById(saved.id);
+                        }))
+                .invoke(checkDb -> assertThat(checkDb).isNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testDeletePermanentFailsIfNotTrashed(UniAsserter asserter) {
+        asserter.execute(() -> createAndPersistRole("DeleteMe2")
+                .chain(saved -> roleRepository.deletePermanent(saved.id)
+                        .chain(deleted -> {
+                            assertThat(deleted).isNull();
+                            return roleRepository.findById(saved.id);
+                        }))
+                .invoke(checkDb -> assertThat(checkDb).isNotNull())
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testRestoreAllDeleted(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("BulkRole1", "BulkRole2", "BulkRole3"))
+                .chain(roles -> trashSequentially(roles.subList(0, 2)).replaceWith(roles))
+                .chain(roles -> roleRepository.restoreAllDeleted()
+                        .chain(result -> {
+                            assertThat(result).isTrue();
+                            return clearSession().replaceWith(roles);
+                        }))
+                .chain(this::reload)
+                .invoke(roles -> {
+                    assertThat(roles.get(0).getDeletedAt()).isNull();
+                    assertThat(roles.get(1).getDeletedAt()).isNull();
+                    assertThat(roles.get(2).getDeletedAt()).isNull();
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testDeleteAllDeleted(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("BulkDelRole1", "BulkDelRole2", "BulkDelRole3"))
+                .chain(roles -> trashSequentially(roles.subList(0, 2)).replaceWith(roles))
+                .chain(roles -> roleRepository.deleteAllDeleted()
+                        .chain(result -> {
+                            assertThat(result).isTrue();
+                            return clearSession().replaceWith(roles);
+                        }))
+                .chain(this::reload)
+                .invoke(roles -> {
+                    assertThat(roles.get(0)).isNull();
+                    assertThat(roles.get(1)).isNull();
+                    assertThat(roles.get(2)).isNotNull();
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindActiveRoles(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("ActiveRole1", "TrashedRole1"))
+                .chain(roles -> roleRepository.trash(roles.get(1).id).replaceWith(roles))
+                .chain(roles -> roleRepository.findActiveRoles(pageRequest(1, 10, null)))
+                .invoke(result -> {
+                    assertThat(result.getData()).hasSize(1);
+                    assertThat(result.getData().get(0).getRoleName()).isEqualTo("ActiveRole1");
+                    assertThat(result.getTotalRecords()).isEqualTo(1);
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindTrashedRoles(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("TrashedRole2", "ActiveRole2"))
+                .chain(roles -> roleRepository.trash(roles.get(0).id).replaceWith(roles))
+                .chain(roles -> roleRepository.findTrashedRoles(pageRequest(1, 10, null)))
+                .invoke(result -> {
+                    assertThat(result.getData()).hasSize(1);
+                    assertThat(result.getData().get(0).getRoleName()).isEqualTo("TrashedRole2");
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindRolesWithSearchKeyword(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("SuperAdmin", "SuperEditor", "Viewer"))
+                .chain(roles -> roleRepository.findRoles(pageRequest(1, 10, "Super")))
+                .invoke(result -> {
+                    assertThat(result.getData()).hasSize(2);
+                    assertThat(result.getTotalRecords()).isEqualTo(2);
+                })
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindRolesWithPagination(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("PageRole1", "PageRole2", "PageRole3",
+                        "PageRole4", "PageRole5"))
+                .chain(roles -> roleRepository.findRoles(pageRequest(1, 2, null)))
+                .invoke(page1 -> {
+                    assertThat(page1.getData()).hasSize(2);
+                    assertThat(page1.getTotalRecords()).isEqualTo(5);
+                })
+                .chain(page1 -> roleRepository.findRoles(pageRequest(2, 2, null))
+                        .invoke(page2 -> {
+                            assertThat(page2.getData()).hasSize(2);
+                            assertThat(page2.getData().get(0).getRoleName()).isNotIn(
+                                    page1.getData().get(0).getRoleName(),
+                                    page1.getData().get(1).getRoleName());
+                        }))
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindRolesWithNullSearchReturnsAll(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRoles("RoleC", "RoleD"))
+                .chain(roles -> roleRepository.findRoles(pageRequest(1, 10, null)))
+                .invoke(result -> assertThat(result.getData()).hasSize(2))
+                .replaceWithVoid());
+    }
+
+    @Test
+    void testFindRolesSearchCaseInsensitive(UniAsserter asserter) {
+        asserter.execute(() -> clean()
+                .chain(() -> createAndPersistRole("ManagerRole"))
+                .chain(ignored -> roleRepository.findRoles(pageRequest(1, 10, "manager")))
+                .invoke(result -> {
+                    assertThat(result.getData()).hasSize(1);
+                    assertThat(result.getData().get(0).getRoleName()).isEqualTo("ManagerRole");
+                })
+                .replaceWithVoid());
     }
 }

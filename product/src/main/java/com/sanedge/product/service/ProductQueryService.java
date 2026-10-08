@@ -14,9 +14,14 @@ import io.smallrye.mutiny.Uni;
 
 public interface ProductQueryService {
     Uni<ApiResponsePagination<List<ProductResponse>>> findAll(FindAllProductRequest req);
+
     Uni<ApiResponsePagination<List<ProductResponseDeleteAt>>> findActiveProducts(FindAllProductRequest req);
+
     Uni<ApiResponsePagination<List<ProductResponseDeleteAt>>> findTrashedProducts(FindAllProductRequest req);
+
     Uni<ApiResponsePagination<List<ProductResponse>>> findByMerchant(FindAllProductByMerchantRequest req);
+
     Uni<ApiResponsePagination<List<ProductResponse>>> findByCategoryName(FindAllProductByCategoryRequest req);
+
     Uni<ApiResponse<ProductResponse>> findById(Long productId);
 }

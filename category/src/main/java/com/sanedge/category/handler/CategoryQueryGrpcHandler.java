@@ -6,8 +6,10 @@ import com.sanedge.category.domain.response.CategoryResponseDeleteAt;
 import com.sanedge.category.service.CategoryQueryService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -16,6 +18,7 @@ import pb.category.CategoryCommon.ApiResponseCategory;
 import pb.category.CategoryCommon.ApiResponsePaginationCategory;
 import pb.category.CategoryCommon.ApiResponsePaginationCategoryDeleteAt;
 import pb.category.CategoryCommon.FindByIdCategoryRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -25,6 +28,7 @@ public class CategoryQueryGrpcHandler extends MutinyCategoryQueryServiceGrpc.Cat
     CategoryQueryService categoryQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationCategory> findAll(pb.category.CategoryQuery.FindAllCategoryRequest request) {
         FindAllCategoryRequest domainReq = new FindAllCategoryRequest();
         domainReq.setPage(request.getPage());
@@ -46,11 +50,15 @@ public class CategoryQueryGrpcHandler extends MutinyCategoryQueryServiceGrpc.Cat
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategory> findById(FindByIdCategoryRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return categoryQueryService.findById((long) request.getId())
                 .map(apiResp -> {
                     ApiResponseCategory.Builder builder = ApiResponseCategory.newBuilder()
@@ -65,11 +73,12 @@ public class CategoryQueryGrpcHandler extends MutinyCategoryQueryServiceGrpc.Cat
                     if (e instanceof com.sanedge.common.exception.ResourceNotFoundException) {
                         return Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException();
                     }
-                    return Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException();
+                    return GrpcErrorMapper.toStatusRuntimeException(e);
                 });
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationCategoryDeleteAt> findByActive(
             pb.category.CategoryQuery.FindAllCategoryRequest request) {
         FindAllCategoryRequest domainReq = new FindAllCategoryRequest();
@@ -93,10 +102,11 @@ public class CategoryQueryGrpcHandler extends MutinyCategoryQueryServiceGrpc.Cat
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationCategoryDeleteAt> findByTrashed(
             pb.category.CategoryQuery.FindAllCategoryRequest request) {
         FindAllCategoryRequest domainReq = new FindAllCategoryRequest();
@@ -120,7 +130,7 @@ public class CategoryQueryGrpcHandler extends MutinyCategoryQueryServiceGrpc.Cat
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.category.CategoryCommon.CategoryResponse toProto(CategoryResponse r) {

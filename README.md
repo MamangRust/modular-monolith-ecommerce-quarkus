@@ -345,24 +345,173 @@ sequenceDiagram
     GW-->>C: HTTP REST Response (JSON format)
 ```
 
-### Asynchronous Flow (Kafka Notification Event pipeline)
+### Asynchronous Flow (Kafka Event Pipeline)
 
-High-performance transaction modifications trigger background notification events published directly to Apache Kafka brokers. The isolated Email service listens to Kafka, maps the events, and sends SMTP email notifications.
+The platform uses **Apache Kafka (KRaft mode)** as its event backbone for **email notifications** (8 domain-specific topics) dispatched through the `EmailService`. All producers use the **Vert.x Kafka client** (`io.vertx.kafka.client.producer.KafkaProducer`) integrated through Quarkus, with `acks=all`, idempotent producers, LZ4 compression, and batching for throughput. The **transactional outbox pattern** (`AuthOutboxPublisher`, `TransactionOutboxPublisher`) guarantees at-least-once delivery even during broker outages.
+
+#### Kafka Topics Registry
+
+| # | Topic | Producer Service | Consumer Service | Consumer Group | Commit Mode | Purpose |
+|---|---|---|---|---|---|---|
+| 1 | `email-service-topic-auth-register` | auth (outbox) | email-service | `email-service-group` | Manual | Registration welcome email |
+| 2 | `email-service-topic-auth-forgot-password` | auth (outbox) | email-service | `email-service-group` | Manual | Password reset OTP email |
+| 3 | `email-service-topic-auth-verify-code-success` | auth | email-service | `email-service-group` | Manual | Email verification success |
+| 4 | `email-service-topic-merchant-create` | merchant | email-service | `email-service-group` | Manual | Merchant onboarding welcome |
+| 5 | `email-service-topic-merchant-update-status` | merchant | email-service | `email-service-group` | Manual | Merchant status change notification |
+| 6 | `email-service-topic-merchant-document-create` | merchant | email-service | `email-service-group` | Manual | Merchant document upload notification |
+| 7 | `email-service-topic-merchant-document-update-status` | merchant | email-service | `email-service-group` | Manual | Merchant document status change |
+| 8 | `email-service-topic-transaction-create` | transaction (outbox) | email-service | `email-service-group` | Manual | Transaction receipt/invoice email |
+| 9 | `email-service-topic-email-retry` | email-service | RetryProcessor | `email-service-group` | Manual | Bounded retry queue (max 3 attempts, exponential backoff) |
+| 10 | `email-service-topic-email-dlq` | email-service | — | — | — | Dead-letter queue (terminal failure sink) |
+
+> **Total: 10 Kafka topics** (8 email notification + 2 email infrastructure)
+
+#### Kafka Producer Architecture
+
+Every service that publishes to Kafka (auth, merchant, transaction) has its own `KafkaService` bean wrapping a `KafkaProducer<String, String>`. The common producer features:
+
+- **Idempotent producer** (`enable.idempotence=true`, `acks=all`) for exactly-once semantics
+- **LZ4 compression** + **batching** (`linger.ms=5`, `batch.size=16384`) for throughput optimization
+- **Exponential backoff retry** (up to 10 retries, 500ms base, 5s cap) with `delivery.timeout.ms=120000`
+- **Chaos Engineering integration** — the chaos manager evaluates a `kafka` policy per topic and can simulate message drops, rejections, or artificial latency
+- **OpenTelemetry tracing** — `kafka_publish_total` counter (success/failure), `kafka_retry_total` counter
+
+```java
+// Standard producer lifecycle in each service (auth, merchant, transaction)
+@Inject Vertx vertx;
+private volatile KafkaProducer<String, String> producer;
+
+@PostConstruct
+void init() {
+    validateProducerConfiguration();  // enforces acks=all when idempotence=true
+    config.put("bootstrap.servers", bootstrapServers);
+    config.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+    config.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+    config.put("acks", acks);           // "all"
+    config.put("enable.idempotence", "true");
+    config.put("compression.type", "lz4");
+    config.put("linger.ms", "5");
+    config.put("batch.size", "16384");
+    producer = KafkaProducer.create(vertx, config);
+}
+```
+
+#### Transactional Outbox Pattern
+
+The **auth** and **transaction** services implement the **transactional outbox pattern** for reliable event publishing. Events are first written to an outbox table (PostgreSQL) within the same transaction as the business operation, then a scheduled poller (`@Scheduled(every = "1s")`) publishes them to Kafka with at-least-once guarantees:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant SVC as Product / Order / Transaction
+    participant SVC as AuthService / TransactionService
+    participant DB as PostgreSQL<br/>(outbox table)
+    participant POLLER as OutboxPublisher<br/>(1s polling)
     participant K as Kafka Broker
-    participant EMAIL as Email Worker Service
+    participant EMAIL as EmailService
     participant SMTP as SMTP Server
 
-    SVC->>K: Publish Event (e.g. order.created / transaction.success)
-    K-->>EMAIL: Deliver topic payload (asynchronous consumer)
-    EMAIL->>EMAIL: Map payload details
-    EMAIL->>SMTP: Send custom styled notification
-    SMTP-->>EMAIL: Delivery Confirmation
+    SVC->>DB: Business operation + INSERT INTO outbox (atomic)
+    DB-->>SVC: ✅ Transaction committed
+    POLLER->>DB: SELECT due events + claim (idempotent)
+    POLLER->>K: Publish email event (with retries)
+    K-->>EMAIL: Consume (manual commit)
+    EMAIL->>EMAIL: Idempotency guard (Redis SET NX PX)
+    alt CLAIMED
+        EMAIL->>SMTP: ReactiveMailer.send()
+        SMTP-->>EMAIL: ✅ Sent
+        EMAIL->>K: Commit offset
+    else DUPLICATE
+        EMAIL->>K: Skip + Commit offset
+    end
 ```
+
+Key outbox guarantees:
+- **Atomic writes** — business operation and outbox insert share the same DB transaction
+- **Claim-based polling** — `@Scheduled(every="1s")` polls, claims, and publishes sequentially
+- **Exponential retry** — failed publishes retry with exponential backoff (1s → 300s cap)
+- **Dead-letter** — events exceeding max retries are marked as failed in the outbox
+- **Backlog gauge** — `outbox_backlog{service}` exposed via OTel for monitoring
+
+#### Email Notification Flow
+
+The email worker (`EmailService.java`) is a single consumer subscribing to all 8 notification topics. Key delivery guarantees:
+
+- **Manual commit** — offsets are committed only after a terminal outcome (sent, retry published, or DLQ published)
+- **Pause/resume draining** — consumer pauses on record arrival, processes one-at-a-time, resumes after commit
+- **Idempotency** — Redis-backed `claimEvent()` uses `SETNX` + `EXPIRE` with lease (fail-open to in-memory set if Redis is unavailable)
+- **Bounded retry** — failed SMTP sends are re-published to `email-service-topic-email-retry` with exponential backoff (500ms base, 5-minute cap), up to `kafka.email.retry.max-attempts` (default: 3)
+- **Dead-letter queue** — exhausted retries move to `email-service-topic-email-dlq` (shared across all topics)
+- **Per-partition consumer lag** — exposed as OTel gauge via `TracingMetrics.registerKafkaLagGauge()`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant SVC as Domain Service<br/>(via outbox or direct)
+    participant K as Kafka Broker
+    participant EMAIL as EmailService<br/>(email-service-group)
+    participant GUARD as Redis IdempotencyGuard
+    participant RETRY as RetryProcessor
+    participant SMTP as SMTP Server
+    participant DLQ as DLQ Topic
+
+    SVC->>K: Publish {event_id, schema_version=1, email, subject, body}
+    K-->>EMAIL: Consume + pause consumer
+    EMAIL->>GUARD: claimEvent(event_id) — SET NX PX
+    alt CLAIMED
+        EMAIL->>SMTP: ReactiveMailer.send()
+        SMTP-->>EMAIL: ✅ Sent
+        EMAIL->>GUARD: markSent(event_id) — SENT TTL 24h
+        EMAIL->>K: Commit offset + resume consumer
+    else DUPLICATE
+        EMAIL->>K: Skip + Commit offset + resume consumer
+    else BUSY (lease held)
+        EMAIL->>K: Do NOT commit (retry after backoff)
+    end
+    alt SMTP failure
+        EMAIL->>K: Publish to email-service-topic-email-retry
+        K-->>RETRY: Consume with backoff
+        RETRY->>EMAIL: Re-consume (attempt N+1)
+    end
+    alt max_retries exceeded
+        EMAIL->>K: Publish to email-service-topic-email-dlq
+        EMAIL->>K: Commit offset (terminal)
+    end
+```
+
+#### Kafka Security & Production Configuration
+
+The `KafkaSecurityConfig` utility (email-service module) centralizes SASL/TLS configuration for production:
+
+| Config | Environment Variable | Default | Description |
+|---|---|---|---|
+| `security.protocol` | `KAFKA_SECURITY_PROTOCOL` | `PLAINTEXT` | Protocol (`PLAINTEXT` / `SASL_SSL`) |
+| `sasl.mechanism` | `KAFKA_SASL_MECHANISM` | `SCRAM-SHA-256` | SASL mechanism |
+| `sasl.jaas.config` | `KAFKA_SASL_JAAS_CONFIG` | — | JAAS login module config |
+| `ssl.truststore.location` | `KAFKA_SSL_TRUSTSTORE_LOCATION` | — | JKS truststore path |
+| `ssl.keystore.location` | `KAFKA_SSL_KEYSTORE_LOCATION` | — | JKS keystore path |
+| `enable.idempotence` | `KAFKA_IDEMPOTENCE` | `true` | Idempotent producer |
+| `acks` | `KAFKA_ACKS` | `all` | Acknowledgement level |
+
+#### Kafka Health Check
+
+A dedicated `KafkaProducerHealthCheck` (MicroProfile Health readiness) uses a Kafka `AdminClient` to verify broker connectivity with a configurable timeout (`kafka.health.timeout.ms`, default: 3000ms). Only registered in modules that opt in via `kafka.health.enabled=true` (auth, merchant, transaction, email-service).
+
+#### Kafka Metrics (OTel)
+
+| Metric | Type | Description |
+|---|---|---|
+| `kafka_publish_total{status}` | Counter | Producer send success/failure count |
+| `kafka_retry_total` | Counter | Producer retry attempts |
+| `outbox_backlog{service}` | Gauge | Pending outbox events (auth, transaction) |
+| `outbox_published_total{service}` | Counter | Events published from outbox |
+| `email_sent_total` | Counter | Emails successfully sent via SMTP |
+| `email_failed_total` | Counter | Email send attempts that failed |
+| `email_retried_total` | Counter | Emails routed to the retry topic |
+| `email_dlq_total` | Counter | Emails moved to DLQ |
+| `email_duplicate_total` | Counter | Duplicate email events skipped |
+| `email_invalid_event_total` | Counter | Events rejected for invalid envelope |
+| `email_processing_duration_seconds` | Histogram | Email record processing duration |
+| `kafka_consumer_lag{group, partition}` | Gauge | Per-partition consumer lag (email group) |
 
 ---
 
@@ -432,13 +581,27 @@ graph TB
 | **Tracing** | OpenTelemetry + Jaeger | Distributed system tracing across API gateway and internal gRPC services. |
 | **Alerting** | Alertmanager | Automated notification system triggered during latency hikes or service disconnects. |
 
+
+## Chaos Engineering Platform
+
+The payment gateway features a built-in **reactive Chaos Engineering engine** to continuously test system resilience under failure conditions (database spikes, slow endpoints, CPU stress, and memory leaks). 
+
+### How It Works
+The chaos engine is managed by [ChaosManager.java](./common/src/main/java/com/sanedge/common/chaos/ChaosManager.java) which dynamically watches the configuration file [chaos.yaml](./chaos.yaml) for modifications:
+- **Dynamic Hot-Reloading**: Every 5 seconds, the engine checks `chaos.yaml` for changes. Adjusting values or toggling policies will update the running system instantly without requiring a service restart.
+
+### Injection Mechanisms
+1. **HTTP Routing Chaos** ([ChaosHttpMiddleware.java](./common/src/main/java/com/sanedge/common/chaos/ChaosHttpMiddleware.java)): Intercepts API router entry points to inject specified latency hikes or HTTP errors (e.g., status code 429 - rate limits).
+2. **Database SQL Chaos** ([ChaosSqlProxy.java](./common/src/main/java/com/sanedge/common/chaos/ChaosSqlProxy.java)): Wraps database clients in a dynamic proxy, injecting database transaction latency or simulating sudden lock wait timeouts/deadlocks when queries hit matching tables.
+3. **Resource Stress Chaos** ([ChaosResourceSabotage.java](./common/src/main/java/com/sanedge/common/chaos/ChaosResourceSabotage.java)): Spawns CPU/memory pressure routines to simulate container hardware throttling or memory exhaustion.
+
 ---
 
 ## Deployment Architectures
 
 ### Docker Compose (Local Development)
 
-The Docker Compose configuration provisions a 6-node Redis Cluster along with databases, event brokers, and reactive service containers to replicate a microservices environment.
+The Docker Compose configuration provisions only the local infrastructure and observability stack: PostgreSQL, PgBouncer, a 6-node Redis Cluster, Kafka, OpenTelemetry, Prometheus, Grafana, Loki, Jaeger, Alertmanager, Pyroscope, and exporters. Java endpoints are run directly on the host so they can be developed and debugged without Java containers.
 
 ```mermaid
 flowchart TB
@@ -809,24 +972,141 @@ flowchart TB
     NODEX_POD -.-> PROM_SVC
 ```
 
+### ArgoCD App-of-Apps GitOps Architecture
+
+The platform follows GitOps best practices using ArgoCD for declarative continuous deployments. Replicating the App-of-Apps design pattern, a root Application (`ecommerce-root`) automatically manages and tracks the states of individual child Applications mapping to Kustomize bases.
+
+Sync waves (`argocd.argoproj.io/sync-wave` annotations) are strictly defined to guarantee database migrations run and complete before domain applications start.
+
+```mermaid
+graph TD
+    classDef root fill:#1e293b,stroke:#22d3ee,color:#cffafe,stroke-width:2.5px,font-weight:bold
+    classDef proj fill:#0f172a,stroke:#38bdf8,color:#e0f2fe,stroke-width:2px
+    classDef app fill:#1e1b4b,stroke:#a78bfa,color:#ede9fe,stroke-width:1.5px
+    classDef wave fill:#1c1917,stroke:#f59e0b,color:#fef3c7,stroke-width:1.5px
+    classDef base fill:#052e16,stroke:#34d399,color:#dcfce7,stroke-width:1.5px
+
+    RootApp["ecommerce-root<br/>(ArgoCD Root Application)"]:::root
+    AppProj["ecommerce<br/>(ArgoCD AppProject)"]:::proj
+
+    RootApp -->|Creates & Tracks| AppProj
+    RootApp -->|Deploys Application Manifests| AppIndex["Child Applications List<br/>(deployments/gitops/argocd/apps/)"]:::app
+
+    subgraph SyncWaves["Ordered Deployment Sequencing (Sync Waves 1 - 6)"]
+        direction TB
+
+        subgraph Wave1["Wave 1: Namespace & Infrastructure"]
+            W1_CM["common"]:::wave
+            W1_PG["infra-postgres"]:::wave
+            W1_RD["infra-redis"]:::wave
+            W1_KF["infra-kafka"]:::wave
+        end
+
+        subgraph Wave2["Wave 2: Database Migration"]
+            W2_MIG["db-migration"]:::wave
+        end
+
+        subgraph Wave3["Wave 3: Core Domain Services"]
+            W3_AUTH["service-auth"]:::wave
+            W3_USR["service-user"]:::wave
+            W3_ROL["service-role"]:::wave
+            W3_PROD["service-product"]:::wave
+            W3_CAT["service-category"]:::wave
+            W3_MER["service-merchant"]:::wave
+            W3_ORD["service-order"]:::wave
+            W3_CRT["service-cart"]:::wave
+            W3_EML["service-email"]:::wave
+            W3_OTH["other-domain-services"]:::wave
+        end
+
+        subgraph Wave4["Wave 4: Financial Movements"]
+            W4_TXN["service-transaction"]:::wave
+        end
+
+        subgraph Wave5["Wave 5: Reverse Proxy Gateway"]
+            W5_APIGW["apigateway"]:::wave
+            W5_NGINX["nginx"]:::wave
+        end
+
+        subgraph Wave6["Wave 6: Observability Suite"]
+            W6_OBS["service-observability"]:::wave
+        end
+
+        Wave1 -->|Triggers next wave| Wave2
+        Wave2 -->|Triggers next wave| Wave3
+        Wave3 -->|Triggers next wave| Wave4
+        Wave4 -->|Triggers next wave| Wave5
+        Wave5 -->|Triggers next wave| Wave6
+    end
+
+    AppIndex -->|Deploys| Wave1
+    AppIndex -->|Deploys| Wave2
+    AppIndex -->|Deploys| Wave3
+    AppIndex -->|Deploys| Wave4
+    AppIndex -->|Deploys| Wave5
+    AppIndex -->|Deploys| Wave6
+
+    subgraph K8sBases["Target: Kustomize Base Resources"]
+        B_COMMON["deployments/kubernetes/base/common"]:::base
+        B_PG["deployments/kubernetes/base/postgres"]:::base
+        B_RD["deployments/kubernetes/base/redis"]:::base
+        B_KF["deployments/kubernetes/base/kafka"]:::base
+        B_MIG["deployments/kubernetes/base/db-migration"]:::base
+        B_AUTH["deployments/kubernetes/base/auth"]:::base
+        B_USR["deployments/kubernetes/base/user"]:::base
+        B_ROL["deployments/kubernetes/base/role"]:::base
+        B_PROD["deployments/kubernetes/base/product"]:::base
+        B_CAT["deployments/kubernetes/base/category"]:::base
+        B_MER["deployments/kubernetes/base/merchant"]:::base
+        B_ORD["deployments/kubernetes/base/order"]:::base
+        B_CRT["deployments/kubernetes/base/cart"]:::base
+        B_EML["deployments/kubernetes/base/email"]:::base
+        B_TXN["deployments/kubernetes/base/transaction"]:::base
+        B_APIGW["deployments/kubernetes/base/apigateway"]:::base
+        B_NGINX["deployments/kubernetes/base/nginx"]:::base
+        B_OBS["deployments/kubernetes/base/observability"]:::base
+    end
+
+    W1_CM -->|Reconciles| B_COMMON
+    W1_PG -->|Reconciles| B_PG
+    W1_RD -->|Reconciles| B_RD
+    W1_KF -->|Reconciles| B_KF
+    W2_MIG -->|Reconciles| B_MIG
+    W3_AUTH -->|Reconciles| B_AUTH
+    W3_USR -->|Reconciles| B_USR
+    W3_ROL -->|Reconciles| B_ROL
+    W3_PROD -->|Reconciles| B_PROD
+    W3_CAT -->|Reconciles| B_CAT
+    W3_MER -->|Reconciles| B_MER
+    W3_ORD -->|Reconciles| B_ORD
+    W3_CRT -->|Reconciles| B_CRT
+    W3_EML -->|Reconciles| B_EML
+    W4_TXN -->|Reconciles| B_TXN
+    W5_APIGW -->|Reconciles| B_APIGW
+    W5_NGINX -->|Reconciles| B_NGINX
+    W6_OBS -->|Reconciles| B_OBS
+```
+
 ---
 
 ## Technology Stack
 
-| Category | Selected Technologies | Purpose |
-| :--- | :--- | :--- |
-| **Language** | Java 21 (Quarkus v3.31.3) | Reactive, non-blocking asynchronous Java execution. |
-| **API Edge Gateway** | Quarkus RESTEasy Reactive | Reactive REST API Gateway router and reverse proxy destination. |
-| **RPC Inter-service** | Quarkus gRPC Client & Server | Blazing fast, contract-first synchronous gRPC communication. |
-| **Database** | PostgreSQL v17 | Safe ACID ledger persistent storage system. |
-| **Database Gateway** | PgBouncer | Extreme-efficiency PostgreSQL socket connection pooler. |
-| **DB Migrations** | Flyway | Incremental database schema version manager run on startup. |
-| **Caching Tier** | Redis Cluster (6 Nodes) | Resilient, distributed key-value cache layer. |
-| **Messaging Stream** | Apache Kafka | Asynchronous high-throughput messaging event bus (KRaft mode). |
-| **Token Manager** | JWT | Secure stateless request authentication standard. |
-| **Observability** | OpenTelemetry + Jaeger | Distributed telemetry tracing pipeline and visualization. |
-| **Docker Engine** | Compose | Local environment virtualization orchestration. |
-| **Orchestrator** | Kubernetes | Production-scale auto-scaling pod clustering infrastructure. |
+| Category | Selected Technologies | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Language** | Java 21 | 21 | Reactive, non-blocking asynchronous Java execution. |
+| **Framework** | Quarkus | 3.31.3 | Reactive framework with gRPC, REST, and reactive SQL support. |
+| **API Gateway** | Quarkus REST | — | Reactive REST API Gateway router and reverse proxy. |
+| **RPC** | gRPC + Protobuf | 1.79.0 / 4.33.5 | Contract-first synchronous inter-service communication. |
+| **Database** | PostgreSQL | 17 | ACID ledger persistent storage with per-service schema isolation. |
+| **DB Migrations** | Flyway | 29 versions | Incremental database schema version manager (V1–V29). |
+| **Caching** | Redis (Standalone + Cluster) | 7.4 | Distributed key-value cache with per-service prefix keys. |
+| **Messaging** | Apache Kafka | KRaft mode | Asynchronous event bus: 8 email topics + 2 infra (retry + DLQ). |
+| **Auth** | JWT (SmallRye) | — | Stateless request authentication with access/refresh token lifecycle. |
+| **Observability** | OpenTelemetry + Jaeger + Prometheus + Grafana + Loki | — | Distributed tracing, metrics, logging, and alerting. |
+| **Chaos Engineering** | Custom (HTTP/SQL/gRPC/Kafka interceptors) | — | Hot-reload chaos policies for resilience testing. |
+| **Testing** | Hurl E2E + JUnit 5 + Testcontainers | 1.20.6 | Full-stack E2E testing (276 requests, 698 assertions). |
+| **Docker** | Compose | — | Local environment orchestration (Redis cluster, Kafka, PG). |
+| **Orchestrator** | Kubernetes + ArgoCD | — | Production auto-scaling with GitOps sync waves. |
 
 ---
 
@@ -869,45 +1149,123 @@ Compile all submodules and build the executable JAR files:
 mvn clean install
 ```
 
-### 4. Build Docker Images and Start Environment
+### 4. Start Infrastructure
 
-Use the included build script to compile the service Docker images, then boot the Docker Compose stack:
-
-```sh
-# Build docker images for all services
-./build-docker-images.sh
-
-# Start local infrastructure, telemetry containers, and application services
-docker-compose -f deployments/local/docker-compose.yml up -d
-```
-
-Flyway database migrations run automatically on service startup, preparing the database schema.
-
-To verify the cluster services are up and healthy:
+Start PostgreSQL, Redis (standalone + cluster), and Kafka:
 
 ```sh
-docker-compose -f deployments/local/docker-compose.yml ps
+docker compose -f deployments/local/docker-compose-infra.yml up -d
 ```
+
+### 5. Run Database Migrations
+
+```sh
+java -jar db-migration/target/quarkus-app/quarkus-run.jar
+```
+
+### 6. Start All Java Services
+
+Each service runs as a standalone JAR on the host. Services with HTTP port conflicts need
+`QUARKUS_HTTP_PORT` overrides:
+
+```sh
+# Example: start gateway (port 8080)
+java -jar gateway/target/quarkus-app/quarkus-run.jar
+
+# Example: start auth service (port 8092)
+java -jar auth/target/quarkus-app/quarkus-run.jar
+
+# Example: start role service (needs HTTP port override to avoid conflict)
+QUARKUS_HTTP_PORT=8114 java -jar role/target/quarkus-app/quarkus-run.jar
+```
+
+Services with HTTP port conflicts (port 8085, 8086): merchant, merchant_award,
+merchant_business, order_item — use `QUARKUS_HTTP_PORT` to assign unique ports.
+
+### 7. Verify Services
+
+```sh
+# Check gateway health
+curl http://localhost:8080/q/health/ready
+
+# Check individual service health
+curl http://localhost:8092/q/health/ready  # auth
+curl http://localhost:8086/q/health/ready  # role
+```
+
+### 8. Run E2E Tests
+
+The project includes a comprehensive E2E Hurl test suite (276 requests, 698 assertions):
+
+```sh
+cd quarkus-grpc-ecommerce
+bash load-test/run-hurl-e2e.sh
+```
+
+The script automatically:
+1. Finds or creates a fixture user in the database
+2. Generates the Hurl test file via `load-test/generate-hurl-e2e.py`
+3. Runs all 276 requests against the live gateway
+4. Produces JUnit XML, HTML, and JSON reports in `reports/hurl/`
+
+#### E2E Test Results (Latest Run)
+
+| Metric | Value |
+| :--- | :--- |
+| Total Requests | 276 |
+| Total Assertions | 698 |
+| Pass Rate | **100%** |
+| Duration | ~36 seconds |
+
+**Coverage:** Auth, Banner, Cart, Category, Merchant (5 sub-modules), Product, Order,
+Order Item, Transaction, Review, Review Detail, Role, Shipping Address, Slider,
+Email Service — including full CRUD lifecycle (create → update → trash → restore),
+invalid-ID guards (id=0 → 400), RBAC safety probes (403), and all stats endpoints
+(monthly/yearly revenue, amount, method, merchant/category pricing).
 
 ---
 
 ## Port Map Registry
 
-| Application/Service | Port Configuration / URL |
-| :--- | :--- |
-| **NGINX Reverse Proxy Edge** | [http://localhost](http://localhost) |
-| **API Gateway Direct REST Hub** | [http://localhost:5000](http://localhost:5000) |
-| **Grafana Dashboard Portal** | [http://localhost:3000](http://localhost:3000) *(Credentials: `admin`/`admin`)* |
-| **Prometheus Telemetry** | [http://localhost:9090](http://localhost:9090) |
-| **Jaeger Distributed Tracing** | [http://localhost:16686](http://localhost:16686) |
-| **PgBouncer Gateway Node** | `localhost:6432` |
-| **PostgreSQL Database Engine** | `localhost:5432` |
+### Application Services
 
-To stop the development system and clean up resources:
+| Service | gRPC Port | HTTP Port |
+| :--- | :---: | :---: |
+| Gateway | — | 8080 |
+| Auth | 9012 | 8092 |
+| User | 9011 | 8091 |
+| Role | 9006 | 8086 |
+| Cart | 9003 | 8083 |
+| Product | 9015 | 8095 |
+| Category | 9014 | 8094 |
+| Merchant | 9005 | 8085 |
+| Merchant Detail | 9022 | 8087 |
+| Merchant Business | 9021 | 8086 |
+| Merchant Policy | 9023 | 8088 |
+| Merchant Award | 9020 | 8085 |
+| Banner | 9013 | 8093 |
+| Slider | 9016 | 8096 |
+| Order | 9018 | 8098 |
+| Order Item | 9019 | 8086 |
+| Transaction | 9009 | 8089 |
+| Review | 9017 | 8097 |
+| Review Detail | 9027 | 8099 |
+| Shipping Address | 9028 | 8100 |
+| Email Service | — | 8092 |
 
-```sh
-docker-compose -f deployments/local/docker-compose.yml down -v
-```
+### Infrastructure
+
+| Component | Port | URL |
+| :--- | :---: | :--- |
+| PostgreSQL | 5432 | `localhost:5432` |
+| Redis Standalone | 6399 | `localhost:6399` |
+| Redis Cluster | 6379–6384 | `localhost:6379`–`6384` |
+| Kafka | 9092 | `localhost:9092` |
+| Grafana | 3000 | [http://localhost:3000](http://localhost:3000) *(admin/admin)* |
+| Prometheus | 9090 | [http://localhost:9090](http://localhost:9090) |
+| Jaeger | 16686 | [http://localhost:16686](http://localhost:16686) |
+| Loki | 3100 | `localhost:3100` |
+| OTel Collector | 4317 | `localhost:4317` |
 
 ---
 
@@ -915,51 +1273,30 @@ docker-compose -f deployments/local/docker-compose.yml down -v
 
 | Command | Scope |
 | :--- | :--- |
-| `mvn clean install` | Cleans target directories, runs tests, compiles all submodules, and generates package JARs. |
-| `mvn compile` | Compiles raw Java source files for all modules. |
-| `./build-docker-images.sh` | Orchestrates the build of Docker images for all Quarkus microservices. |
-| `docker-compose -f deployments/local/docker-compose.yml up -d` | Launches all containers (DBs, Redis cluster, Kafka, observability, and Java services) in background mode. |
-| `docker-compose -f deployments/local/docker-compose.yml down` | Stops compose containers, releasing standard networks. |
-| `docker-compose -f deployments/local/docker-compose.yml logs -f <service>` | Follows the realtime stdout logs of a specific service container. |
+| `mvn clean install -DskipTests` | Compiles all 23 submodules and generates executable JARs. |
+| `mvn clean install` | Full build with unit tests. |
+| `mvn install -pl common -DskipTests` | Rebuild only the shared `common` module (proto stubs, RedisService, chaos engine). |
+| `java -jar <module>/target/quarkus-app/quarkus-run.jar` | Start a single service. Use `QUARKUS_HTTP_PORT=<port>` for HTTP port conflicts. |
+| `java -jar db-migration/target/quarkus-app/quarkus-run.jar` | Run Flyway database migrations. |
+| `docker compose -f deployments/local/docker-compose-infra.yml up -d` | Start infrastructure only (PostgreSQL, Redis, Kafka). |
+| `docker compose -f deployments/local/docker-compose-infra.yml down -v` | Stop infrastructure and remove volumes. |
+| `bash load-test/run-hurl-e2e.sh` | Run full E2E Hurl test suite (276 requests, 698 assertions). |
+| `python3 load-test/generate-hurl-e2e.py` | Regenerate the E2E Hurl test file. |
+| `curl http://localhost:8080/q/health/ready` | Verify gateway health. |
 
 ---
 
 ## Workspace Directory Tree
 
 ```
-quarkus-ecommerce/
-├── pom.xml                         # Root Maven Parent POM
-├── common/src/main/proto/          # Protobuf contracts (22 domains)
-│   ├── auth.proto                  #   Identity tokens contracts
-│   ├── banner/                     #   Promo Banners
-│   ├── cart/                       #   Shopping Cart specifications
-│   ├── category/                   #   Product Classification specifications
-│   ├── common/                     #   Shared protobuf data types
-│   ├── merchant/                   #   Merchant account declarations
-│   ├── merchant_award/             #   Merchant Awards specifications
-│   ├── merchant_business/          #   Merchant Business declarations
-│   ├── merchant_detail/            #   Merchant Profiles specifications
-│   ├── merchant_document/          #   Verification files specifications
-│   ├── merchant_policy/            #   Merchant Policy specifications
-│   ├── merchant_social_link/       #   Merchant Social Link specifications
-│   ├── order/                      #   Checkout Orders specifications
-│   ├── order_item/                 #   Checkout Order Items details
-│   ├── product/                    #   Product Catalog specifications
-│   ├── review/                     #   Ratings specifications
-│   ├── review_detail/              #   Ratings context specifications
-│   ├── role/                       #   Role mapping specifications
-│   ├── shipping_address/           #   Customer Address specifications
-│   ├── slider/                     #   Front Sliders specifications
-│   ├── transaction/                #   General audit register specifications
-│   └── user/                       #   User CRUD data properties
-├── common/                         # Shared Maven library Module
-│   └── src/main/java/com/sanedge/common/
-│       ├── config/                 #   AppConfig, JwtConfig, RedisConfig, FlywayConfig
-│       ├── observability/          #   TracingMetrics config
-│       ├── service/                #   RedisService utilities
-│       └── pb/                     #   Compiled Java Protobuf gRPC stubs
-├── gateway/                        # REST API Gateway (REST Router proxying to gRPC)
-├── auth/                           # Authentication engine service
+quarkus-grpc-ecommerce/
+├── pom.xml                         # Root Maven Parent POM (23 modules)
+├── chaos.yaml                      # Chaos engineering policy configuration
+├── common/                         # Shared Maven library + protobuf contracts
+│   └── src/main/proto/             #   Proto definitions (22 domains)
+├── db-migration/                   # Flyway database migration runner
+├── gateway/                        # REST API Gateway (HTTP → gRPC reverse proxy)
+├── auth/                           # Authentication engine (JWT, register, login)
 ├── user/                           # User profiles service (CQRS)
 ├── role/                           # RBAC authorization service
 ├── merchant/                       # Merchant onboarding & reports service
@@ -973,19 +1310,74 @@ quarkus-ecommerce/
 ├── slider/                         # Home carousels sliders service
 ├── cart/                           # Shopping cart service
 ├── order/                          # Order and checkout processor service
+├── order_item/                     # Order item decomposition service
 ├── shipping_address/               # Shipping addresses service
 ├── transaction/                    # Financial ledger & payments service
 ├── review/                         # Ratings and review submissions service
 ├── review_detail/                  # Detailed review context service
 ├── email-service/                  # Asynchronous Kafka notifications service
+├── load-test/
+│   ├── e2e/                        #   Generated Hurl E2E test suite (276 requests)
+│   ├── generate-hurl-e2e.py        #   E2E test generator script
+│   └── run-hurl-e2e.sh             #   E2E test runner script
 ├── deployments/
 │   ├── local/                      #   Docker compose infrastructure files
+│   │   ├── docker-compose-infra.yml  # Standalone infra (PG, Redis, Kafka)
+│   │   └── docker-compose.yml       # Full stack with observability
 │   └── kubernetes/                 #   Production K8s deployment manifests
-├── observability/                  #   Telemetry pipelines configurations (Loki, OTEL, Alertmanager)
+├── reports/hurl/                   #   E2E test reports (JUnit, HTML, JSON)
+├── observability/                  #   Telemetry pipelines (Loki, OTEL, Alertmanager)
 ├── grafana/                        #   Pre-configured dashboard JSON files
-├── nginx/                          #   Reverse-proxy NGINX rules
-└── images/                         #   Architecture diagrams & dashboard screenshots
+└── nginx/                          #   Reverse-proxy NGINX rules
 ```
+
+---
+
+## E2E Test Coverage
+
+The project includes a comprehensive E2E Hurl test suite that exercises every endpoint
+through the gateway, including CRUD lifecycle, RBAC safety, invalid-ID guards, and
+statistical aggregations.
+
+### Test Structure
+
+The Hurl test file is auto-generated by `load-test/generate-hurl-e2e.py` and includes:
+
+1. **Health check** — Gateway readiness probe
+2. **Auth flow** — Login, profile, refresh token, register new user
+3. **List endpoints** — All resource list, active, and trashed views
+4. **CRUD lifecycle** — Create → Read → Update → Trash → Restore for every entity
+5. **GET-by-ID** — Verify each entity can be fetched by its captured ID
+6. **Stats endpoints** — Monthly/yearly revenue, pricing, amount, method aggregations
+7. **Safety probes** — Permanent delete/restore-all must return 403 for non-admin tokens
+8. **Invalid-ID contract** — id=0 must return HTTP 400 with `positive integer` error
+9. **Body validation** — Invalid IDs in create/update payloads must return 400
+
+### Test Results
+
+| Domain | Requests | Status |
+| :--- | :---: | :---: |
+| Auth | 5 | ✅ |
+| Banner | 16 | ✅ |
+| Cart | 6 | ✅ |
+| Category | 28 | ✅ |
+| Merchant | 13 | ✅ |
+| Merchant Award | 13 | ✅ |
+| Merchant Business | 13 | ✅ |
+| Merchant Detail | 14 | ✅ |
+| Merchant Document | 13 | ✅ |
+| Merchant Policy | 13 | ✅ |
+| Order | 11 | ✅ |
+| Product | 14 | ✅ |
+| Review | 13 | ✅ |
+| Review Detail | 13 | ✅ |
+| Role | 19 | ✅ |
+| Shipping | 11 | ✅ |
+| Slider | 12 | ✅ |
+| Stats (all) | 24 | ✅ |
+| Transaction | 13 | ✅ |
+| User | 11 | ✅ |
+| **Total** | **276** | **✅ 100%** |
 
 ---
 
@@ -996,5 +1388,5 @@ This project is open-sourced under the MIT License for educational and developme
 ---
 
 <p align="center">
-  Built with Java, Quarkus, gRPC, Apache Kafka, and a passion for high-performance reactive modular monoliths.
+  Built with Java 21, Quarkus 3.31.3, gRPC 1.79.0, Apache Kafka, and a passion for high-performance reactive modular monoliths.
 </p>

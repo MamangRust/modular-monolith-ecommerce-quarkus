@@ -54,13 +54,15 @@ class CategoryTotalPriceByMerchantServiceTest {
     void setUp() {
         service = new CategoryTotalPriceByMerchantServiceImpl(categoryTotalPriceByMerchantRepository, redisService,
                 objectMapper, tracingMetrics);
-        lenient()
-                .when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class),
-                        any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
 
     private CategoriesMonthlyTotalPrice createMonthlyTotal() {
@@ -70,8 +72,6 @@ class CategoryTotalPriceByMerchantServiceTest {
     private CategoriesYearlyTotalPrice createYearlyTotal() {
         return new CategoriesYearlyTotalPrice("2024", 12000L);
     }
-
-    // ========== findMonthlyTotalPriceByMerchant Tests ==========
 
     @Test
     void findMonthlyTotalPriceByMerchant_nullMerchantId_throwsResourceNotFoundException() {
@@ -107,8 +107,6 @@ class CategoryTotalPriceByMerchantServiceTest {
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.data()).hasSize(1);
     }
-
-    // ========== findYearlyTotalPriceByMerchant Tests ==========
 
     @Test
     void findYearlyTotalPriceByMerchant_cacheMiss_returnsFromDb() {

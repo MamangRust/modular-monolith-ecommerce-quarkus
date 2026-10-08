@@ -14,7 +14,8 @@ public interface ProductCommandService {
     Uni<ApiResponse<ProductResponseDeleteAt>> trashedProduct(Integer productId);
     Uni<ApiResponse<ProductResponseDeleteAt>> restoreProduct(Integer productId);
     Uni<ApiResponse<ProductResponse>> updateProductCountStock(Integer productId, Integer stock);
-    Uni<ApiResponse<Boolean>> deleteProductPermanent(Integer productId);
-    Uni<ApiResponse<Boolean>> restoreAllProducts();
-    Uni<ApiResponse<Boolean>> deleteAllProductsPermanent();
+    Uni<ApiResponse<ProductResponse>> adjustStock(Integer productId, Integer delta);
+    Uni<ApiResponse<Void>> deleteProductPermanent(Integer productId);
+    Uni<ApiResponse<Void>> restoreAllProducts();
+    Uni<ApiResponse<Void>> deleteAllProductsPermanent();
 }

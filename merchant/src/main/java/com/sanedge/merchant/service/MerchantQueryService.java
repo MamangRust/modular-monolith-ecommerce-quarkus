@@ -19,7 +19,5 @@ public interface MerchantQueryService {
 
     Uni<ApiResponse<MerchantResponse>> findById(Long merchantId);
 
-    Uni<ApiResponse<MerchantResponse>> findByApiKey(String apiKey);
-
     Uni<ApiResponse<List<MerchantResponse>>> findByUserId(Long userId);
 }

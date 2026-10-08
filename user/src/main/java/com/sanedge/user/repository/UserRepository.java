@@ -1,5 +1,6 @@
 package com.sanedge.user.repository;
 
+import com.sanedge.common.repository.PagedQuery;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
@@ -18,70 +19,70 @@ public class UserRepository implements PanacheRepository<User> {
     public Uni<PagedResult<User>> findUsers(FindAllUsers req) {
         int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : null;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
 
-        var query = """
-                    deletedAt IS NULL
-                    AND (
-                        ?1 IS NULL
-                        OR LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(lastname)  LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(email)     LIKE LOWER(CONCAT('%', ?1, '%'))
-                    )
-                """;
+        io.quarkus.hibernate.reactive.panache.PanacheQuery<User> panacheQuery;
+        if (keyword.isEmpty()) {
+            panacheQuery = find("deletedAt IS NULL").page(page, size);
+        } else {
+            var query = """
+                        deletedAt IS NULL
+                        AND (
+                            LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(lastname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(email) LIKE LOWER(CONCAT('%', ?1, '%'))
+                        )
+                    """;
+            panacheQuery = find(query, keyword).page(page, size);
+        }
 
-        var panacheQuery = find(query, keyword)
-                .page(page, size);
-
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<User>> findActiveUsers(FindAllUsers req) {
         int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : null;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
 
-        var query = """
-                    deletedAt IS NULL
-                    AND (
-                        ?1 IS NULL
-                        OR LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(lastname)  LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(email)     LIKE LOWER(CONCAT('%', ?1, '%'))
-                    )
-                """;
+        io.quarkus.hibernate.reactive.panache.PanacheQuery<User> panacheQuery;
+        if (keyword.isEmpty()) {
+            panacheQuery = find("deletedAt IS NULL").page(page, size);
+        } else {
+            var query = """
+                        deletedAt IS NULL
+                        AND (
+                            LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(lastname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(email) LIKE LOWER(CONCAT('%', ?1, '%'))
+                        )
+                    """;
+            panacheQuery = find(query, keyword).page(page, size);
+        }
 
-        var panacheQuery = find(query, keyword)
-                .page(page, size);
-
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<PagedResult<User>> findTrashedUsers(FindAllUsers req) {
         int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
         int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
-        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : null;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
 
-        var query = """
-                    deletedAt IS NOT NULL
-                    AND (
-                        ?1 IS NULL
-                        OR LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(lastname)  LIKE LOWER(CONCAT('%', ?1, '%'))
-                        OR LOWER(email)     LIKE LOWER(CONCAT('%', ?1, '%'))
-                    )
-                """;
+        io.quarkus.hibernate.reactive.panache.PanacheQuery<User> panacheQuery;
+        if (keyword.isEmpty()) {
+            panacheQuery = find("deletedAt IS NOT NULL").page(page, size);
+        } else {
+            var query = """
+                        deletedAt IS NOT NULL
+                        AND (
+                            LOWER(firstname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(lastname) LIKE LOWER(CONCAT('%', ?1, '%'))
+                            OR LOWER(email) LIKE LOWER(CONCAT('%', ?1, '%'))
+                        )
+                    """;
+            panacheQuery = find(query, keyword).page(page, size);
+        }
 
-        var panacheQuery = find(query, keyword)
-                .page(page, size);
-
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(tuple -> new PagedResult<>(tuple.getItem1(), tuple.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<User> findById(Integer id) {

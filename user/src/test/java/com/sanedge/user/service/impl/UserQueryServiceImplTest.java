@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -58,18 +59,16 @@ class UserQueryServiceImplTest {
                 tracingMetrics,
                 objectMapper);
 
-        // Use lenient() so cache-hit tests that don't invoke tracing don't fail with UnnecessaryStubbing
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(invocation -> {
-                    Supplier<?> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
+        lenient().doAnswer(invocation -> {
+            Supplier<Uni<?>> supplier = invocation.getArgument(3);
+            return supplier.get();
+        }).when(tracingMetrics)
+                .traceAndMeasure(
+                        anyString(),
+                        anyString(),
+                        any(Attributes.class),
+                        any());
     }
-
-    // ==========================================
-    // HELPER METHODS (Digunakan agar kode tidak berulang dan serialization
-    // berhasil)
-    // ==========================================
 
     private User createMockUser(Long id, String username, String email) {
         User user = new User();
@@ -89,7 +88,6 @@ class UserQueryServiceImplTest {
         return req;
     }
 
-    // Helper khusus untuk mensimulasikan String JSON yang disimpan di Redis
     private String toJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj);
@@ -97,10 +95,6 @@ class UserQueryServiceImplTest {
             throw new RuntimeException("Failed to serialize in test helper", e);
         }
     }
-
-    // ==========================================
-    // 1. TESTS FIND BY ID
-    // ==========================================
 
     @Test
     void findById_cacheHit_returnsCachedUserWithoutHittingDb() {
@@ -118,9 +112,8 @@ class UserQueryServiceImplTest {
         assertThat(response.data().getUsername()).isEqualTo("johndoe");
         assertThat(response.data().getEmail()).isEqualTo("john@example.com");
 
-        // Verifikasi bahwa DB tidak pernah dipanggil karena data ada di cache
         verify(userRepository, never()).findById(anyLong());
-        // Verifikasi bahwa Redis tidak menimpa cache yang sudah ada
+
         verify(redisService, never()).setReactive(anyString(), anyString());
     }
 
@@ -139,9 +132,8 @@ class UserQueryServiceImplTest {
         assertThat(response.message()).isEqualTo("User found");
         assertThat(response.data().getUsername()).isEqualTo("janedoe");
 
-        // Verifikasi DB dipanggil
         verify(userRepository).findById(2L);
-        // Verifikasi hasil DB disimpan ke Redis
+
         verify(redisService).setReactive(eq("user:2"), anyString());
     }
 
@@ -154,13 +146,8 @@ class UserQueryServiceImplTest {
 
         assertThrows(NotFoundException.class, () -> resultUni.await().indefinitely());
 
-        // Verifikasi tidak mencoba menyimpan data NULL ke cache
         verify(redisService, never()).setReactive(anyString(), anyString());
     }
-
-    // ==========================================
-    // 2. TESTS FIND ALL PAGINATED (USERS)
-    // ==========================================
 
     @Test
     void findAllPaginated_cacheHit_returnsCachedList() {
@@ -184,7 +171,6 @@ class UserQueryServiceImplTest {
         assertThat(response.data()).hasSize(2);
         assertThat(response.data().get(0).getUsername()).isEqualTo("user1");
 
-        // Verifikasi DB tidak dipanggil
         verify(userRepository, never()).findUsers(any(FindAllUsers.class));
     }
 
@@ -211,15 +197,11 @@ class UserQueryServiceImplTest {
         assertThat(response.data()).hasSize(2);
         assertThat(response.pagination()).isNotNull();
         assertThat(response.pagination().totalRecords()).isEqualTo(2);
-        assertThat(response.pagination().totalPages()).isEqualTo(1); // 2 records / size 10
+        assertThat(response.pagination().totalPages()).isEqualTo(1);
 
         verify(userRepository).findUsers(req);
         verify(redisService).setWithExpirationReactive(eq(cacheKey), anyString(), eq(300L));
     }
-
-    // ==========================================
-    // 3. TESTS FIND ACTIVE PAGINATED
-    // ==========================================
 
     @Test
     void findActivePaginated_cacheHit_returnsCachedList() {
@@ -266,10 +248,6 @@ class UserQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(eq(cacheKey), anyString(), eq(300L));
     }
 
-    // ==========================================
-    // 4. TESTS FIND TRASHED PAGINATED
-    // ==========================================
-
     @Test
     void findTrashedPaginated_cacheHit_returnsCachedList() {
         FindAllUsers req = createDefaultRequest();
@@ -315,19 +293,14 @@ class UserQueryServiceImplTest {
         verify(redisService).setWithExpirationReactive(eq(cacheKey), anyString(), eq(300L));
     }
 
-    // ==========================================
-    // 5. EDGE CASES: PAGINATION MATH & DYNAMIC CACHE KEYS
-    // ==========================================
-
     @Test
     void findAllPaginated_calculatesTotalPagesCorrectlyWhenNotPerfectlyDivisible() {
         FindAllUsers req = new FindAllUsers();
         req.setPage(1);
-        req.setPageSize(2); // Size 2
+        req.setPageSize(2);
         req.setSearch(null);
         String cacheKey = "users:all:1:2:null";
 
-        // Simulasikan ada 5 data total, tapi yang di-fetch di halaman 1 cuma 2
         List<User> users = List.of(
                 createMockUser(1L, "u1", "u1@example.com"),
                 createMockUser(2L, "u2", "u2@example.com"));
@@ -341,7 +314,6 @@ class UserQueryServiceImplTest {
         ApiResponsePagination<List<UserResponse>> response = userQueryService.findAllPaginated(req)
                 .await().indefinitely();
 
-        // 5 records / 2 size = 2.5 -> Math.ceil -> 3 halaman
         assertThat(response.pagination()).isNotNull();
         assertThat(response.pagination().totalPages()).isEqualTo(3);
         assertThat(response.pagination().totalRecords()).isEqualTo(5);
@@ -356,7 +328,6 @@ class UserQueryServiceImplTest {
         req.setPageSize(5);
         req.setSearch("john doe");
 
-        // Key yang diharapkan berubah mengikuti input request
         String expectedCacheKey = "users:all:2:5:john doe";
 
         PagedResult<User> emptyResult = new PagedResult<>(List.of(), 0);
@@ -368,8 +339,6 @@ class UserQueryServiceImplTest {
 
         userQueryService.findAllPaginated(req).await().indefinitely();
 
-        // Membuktikan bahwa logic String.format di Service berjalan benar untuk kasus
-        // apapun
         verify(redisService).getReactive(expectedCacheKey);
         verify(redisService).setWithExpirationReactive(eq(expectedCacheKey), anyString(), eq(300L));
     }

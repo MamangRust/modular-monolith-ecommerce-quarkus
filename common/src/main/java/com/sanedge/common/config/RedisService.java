@@ -51,6 +51,16 @@ public class RedisService {
         return reactiveValueCommands.set(key, value);
     }
 
+    public Uni<Boolean> setIfAbsentWithExpirationReactive(String key, String value, long seconds) {
+        // Quarkus exposes SETNX as the portable reactive primitive here. The
+        // follow-up TTL bounds an orphaned claim if the process crashes between
+        // the two commands; event processing remains retryable after expiry.
+        return reactiveValueCommands.setnx(key, value)
+                .chain(created -> created
+                        ? reactiveKeyCommands.expire(key, seconds).replaceWith(true)
+                        : Uni.createFrom().item(false));
+    }
+
     public void delete(String key) {
         redisDataSource.key().del(key);
     }
@@ -58,6 +68,17 @@ public class RedisService {
     public Uni<Void> deleteReactive(String key) {
         return reactiveKeyCommands.del(key)
                 .replaceWithVoid();
+    }
+
+    /**
+     * Deletes every key matching the given glob pattern (e.g. "roles:user:*").
+     * Used to invalidate derived caches whose keys cannot be enumerated statically.
+     */
+    public Uni<Void> deleteByPatternReactive(String pattern) {
+        return reactiveKeyCommands.keys(pattern)
+                .chain(keys -> keys == null || keys.isEmpty()
+                        ? Uni.createFrom().voidItem()
+                        : reactiveKeyCommands.del(keys.toArray(new String[0])).replaceWithVoid());
     }
 
     public boolean exists(String key) {

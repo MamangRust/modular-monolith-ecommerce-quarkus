@@ -5,7 +5,9 @@ import java.util.stream.Collectors;
 import com.sanedge.category.service.stats.CategoryPriceService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -23,6 +25,7 @@ public class CategoryPriceGrpcHandler extends MutinyCategoryPriceServiceGrpc.Cat
     CategoryPriceService categoryPriceService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryMonthPrice> findMonthPrice(FindYearCategory request) {
         return categoryPriceService.findMonthPrice(request.getYear())
                 .map(apiResp -> {
@@ -43,10 +46,11 @@ public class CategoryPriceGrpcHandler extends MutinyCategoryPriceServiceGrpc.Cat
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseCategoryYearPrice> findYearPrice(FindYearCategory request) {
         return categoryPriceService.findYearPrice(request.getYear())
                 .map(apiResp -> {
@@ -68,6 +72,6 @@ public class CategoryPriceGrpcHandler extends MutinyCategoryPriceServiceGrpc.Cat
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 }

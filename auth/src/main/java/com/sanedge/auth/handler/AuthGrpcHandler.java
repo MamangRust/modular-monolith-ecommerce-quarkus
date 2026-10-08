@@ -3,6 +3,7 @@ package com.sanedge.auth.handler;
 import com.sanedge.auth.service.AuthService;
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithTransaction;
 import jakarta.inject.Inject;
 
 import pb.Auth.ApiResponseVerifyCode;
@@ -20,6 +21,8 @@ import pb.Auth.ApiResponseRefreshToken;
 import pb.Auth.RefreshTokenRequest;
 import pb.Auth.ApiResponseGetMe;
 import pb.Auth.GetMeRequest;
+import pb.user.UserCommon.UserResponse;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 public class AuthGrpcHandler extends pb.MutinyAuthServiceGrpc.AuthServiceImplBase {
@@ -55,7 +58,12 @@ public class AuthGrpcHandler extends pb.MutinyAuthServiceGrpc.AuthServiceImplBas
 
     @Override
     public Uni<ApiResponseResetPassword> resetPassword(ResetPasswordRequest request) {
-        return authService.resetPassword(request.getResetToken(), request.getPassword(), request.getConfirmPassword())
+        com.sanedge.auth.domain.requests.ResetPasswordRequest domainReq = new com.sanedge.auth.domain.requests.ResetPasswordRequest();
+        domainReq.setToken(request.getResetToken());
+        domainReq.setPassword(request.getPassword());
+        domainReq.setConfirmPassword(request.getConfirmPassword());
+
+        return authService.resetPassword(domainReq)
                 .map(v -> ApiResponseResetPassword.newBuilder()
                         .setStatus("success")
                         .setMessage("Password reset successfully")
@@ -68,12 +76,18 @@ public class AuthGrpcHandler extends pb.MutinyAuthServiceGrpc.AuthServiceImplBas
 
     @Override
     public Uni<ApiResponseRegister> registerUser(RegisterRequest request) {
+        com.sanedge.auth.domain.requests.RegisterRequest domainReq = new com.sanedge.auth.domain.requests.RegisterRequest();
+        domainReq.setFirstName(request.getFirstname());
+        domainReq.setLastName(request.getLastname());
+        domainReq.setEmail(request.getEmail());
+        domainReq.setPassword(request.getPassword());
+
         return authService
-                .register(request.getFirstname(), request.getLastname(), request.getEmail(), request.getPassword())
+                .register(domainReq)
                 .map(user -> ApiResponseRegister.newBuilder()
                         .setStatus("success")
                         .setMessage("User registered successfully. Verification email sent.")
-                        .setData(user)
+                        .setData(toProtoUser(user))
                         .build())
                 .onFailure().recoverWithItem(err -> ApiResponseRegister.newBuilder()
                         .setStatus("failed")
@@ -99,6 +113,7 @@ public class AuthGrpcHandler extends pb.MutinyAuthServiceGrpc.AuthServiceImplBas
     }
 
     @Override
+    @WithTransaction
     public Uni<ApiResponseRefreshToken> refreshToken(RefreshTokenRequest request) {
         return authService.refresh(request.getRefreshToken())
                 .map(tokens -> ApiResponseRefreshToken.newBuilder()
@@ -117,15 +132,27 @@ public class AuthGrpcHandler extends pb.MutinyAuthServiceGrpc.AuthServiceImplBas
 
     @Override
     public Uni<ApiResponseGetMe> getMe(GetMeRequest request) {
+        if (request.getUserId() <= 0) {
+            return IdValidator.invalid("User id");
+        }
         return authService.getMe((long) request.getUserId())
                 .map(user -> ApiResponseGetMe.newBuilder()
                         .setStatus("success")
                         .setMessage("Profile retrieved successfully")
-                        .setData(user)
+                        .setData(toProtoUser(user))
                         .build())
                 .onFailure().recoverWithItem(err -> ApiResponseGetMe.newBuilder()
                         .setStatus("failed")
                         .setMessage(err.getMessage())
                         .build());
+    }
+
+    private static UserResponse toProtoUser(com.sanedge.common.adapter.model.User user) {
+        return UserResponse.newBuilder()
+                .setId(user.id())
+                .setFirstname(user.firstname() == null ? "" : user.firstname())
+                .setLastname(user.lastname() == null ? "" : user.lastname())
+                .setEmail(user.email() == null ? "" : user.email())
+                .build();
     }
 }

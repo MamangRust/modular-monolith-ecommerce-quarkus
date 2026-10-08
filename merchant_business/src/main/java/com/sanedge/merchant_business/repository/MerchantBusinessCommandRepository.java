@@ -37,13 +37,13 @@ public class MerchantBusinessCommandRepository implements PanacheRepository<Merc
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long merchantBusinessId) {
+    public Uni<MerchantBusinessInformation> deletePermanent(Long merchantBusinessId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", merchantBusinessId).firstResult()
                 .chain(info -> {
                     if (info != null) {
-                        return delete(info).map(v -> true);
+                        return delete(info).map(v -> info);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

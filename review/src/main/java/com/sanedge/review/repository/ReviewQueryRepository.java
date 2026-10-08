@@ -1,5 +1,6 @@
 package com.sanedge.review.repository;
 
+import com.sanedge.common.repository.PagedQuery;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -11,6 +12,9 @@ import com.sanedge.common.domain.response.PagedResult;
 import com.sanedge.review.entity.Review;
 import com.sanedge.review.entity.ReviewDetail;
 import com.sanedge.review.entity.ReviewRelationsDetail;
+import com.sanedge.review.domain.requests.FindAllReview;
+import com.sanedge.review.domain.requests.FindAllReviewByMerchant;
+import com.sanedge.review.domain.requests.FindAllReviewByProduct;
 
 import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.hibernate.reactive.panache.PanacheRepository;
@@ -22,64 +26,73 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public Uni<PagedResult<Review>> findReviews(String keyword, int page, int size) {
+    public Uni<PagedResult<Review>> findReviews(FindAllReview req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+
         var query = """
                     deletedAt IS NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(comment) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
                 """;
         var panacheQuery = find(query, keyword).page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(t -> new PagedResult<>(t.getItem1(), t.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
-    public Uni<PagedResult<Review>> findActiveReviews(String keyword, int page, int size) {
+    public Uni<PagedResult<Review>> findActiveReviews(FindAllReview req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+
         var query = """
                     deletedAt IS NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(comment) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
                 """;
         var panacheQuery = find(query, keyword).page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(t -> new PagedResult<>(t.getItem1(), t.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
-    public Uni<PagedResult<Review>> findTrashedReviews(String keyword, int page, int size) {
+    public Uni<PagedResult<Review>> findTrashedReviews(FindAllReview req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String keyword = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+
         var query = """
                     deletedAt IS NOT NULL
                     AND (
-                        ?1 IS NULL
-                        OR LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
+LOWER(name) LIKE LOWER(CONCAT('%', ?1, '%'))
                         OR LOWER(comment) LIKE LOWER(CONCAT('%', ?1, '%'))
                     )
                 """;
         var panacheQuery = find(query, keyword).page(page, size);
-        return Uni.combine().all().unis(panacheQuery.list(), panacheQuery.count())
-                .asTuple()
-                .map(t -> new PagedResult<>(t.getItem1(), t.getItem2().intValue()));
+        return PagedQuery.fetch(panacheQuery);
     }
 
     public Uni<Optional<Review>> findReviewById(Long reviewId) {
         return find("id = ?1 AND deletedAt IS NULL", reviewId).firstResult().map(Optional::ofNullable);
     }
 
-    public Uni<PagedResult<ReviewRelationsDetail>> findByMerchantId(Integer merchantId, Integer rating, String search, int page, int size) {
+    public Uni<PagedResult<ReviewRelationsDetail>> findByMerchantId(FindAllReviewByMerchant req) {
+        Integer merchantId = req.getMerchantId();
+        Integer rating = req.getRating() == null ? 0 : req.getRating();
+        String search = req.getSearch() == null ? "" : req.getSearch();
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+
         String baseSql = """
                 FROM reviews r
                 JOIN products p ON r.product_id = p.id
                 WHERE r.deleted_at IS NULL
                   AND p.merchant_id = :merchantId
-                  AND (:rating IS NULL OR r.rating = :rating)
+                  AND (:rating = 0 OR r.rating = :rating)
                   AND (
-                        :search IS NULL
+                        :search = ''
                         OR r.name ILIKE CONCAT('%', :search, '%')
                         OR r.comment ILIKE CONCAT('%', :search, '%')
                       )
@@ -120,7 +133,7 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
             var countQuery = session.createNativeQuery(countSql);
             countQuery.setParameter("merchantId", merchantId);
             countQuery.setParameter("rating", rating);
-            countQuery.setParameter("search", search == null || search.isBlank() ? null : search);
+            countQuery.setParameter("search", search == null || search.isBlank() ? "" : search);
 
             return countQuery.getSingleResult().chain(countVal -> {
                 long total = ((Number) countVal).longValue();
@@ -128,7 +141,7 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
                 var dataQuery = session.createNativeQuery(dataSql);
                 dataQuery.setParameter("merchantId", merchantId);
                 dataQuery.setParameter("rating", rating);
-                dataQuery.setParameter("search", search == null || search.isBlank() ? null : search);
+                dataQuery.setParameter("search", search == null || search.isBlank() ? "" : search);
                 dataQuery.setParameter("limit", size);
                 dataQuery.setParameter("offset", page * size);
 
@@ -140,14 +153,20 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
         });
     }
 
-    public Uni<PagedResult<ReviewRelationsDetail>> findByProductId(Integer productId, Integer rating, String search, int page, int size) {
+    public Uni<PagedResult<ReviewRelationsDetail>> findByProductId(FindAllReviewByProduct req) {
+        Integer productId = req.getProductId();
+        Integer rating = req.getRating() == null ? 0 : req.getRating();
+        String search = req.getSearch() == null ? "" : req.getSearch();
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+
         String baseSql = """
                 FROM reviews r
                 WHERE r.deleted_at IS NULL
                   AND r.product_id = :productId
-                  AND (:rating IS NULL OR r.rating = :rating)
+                  AND (:rating = 0 OR r.rating = :rating)
                   AND (
-                        :search IS NULL
+                        :search = ''
                         OR r.name ILIKE CONCAT('%', :search, '%')
                         OR r.comment ILIKE CONCAT('%', :search, '%')
                       )
@@ -188,7 +207,7 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
             var countQuery = session.createNativeQuery(countSql);
             countQuery.setParameter("productId", productId);
             countQuery.setParameter("rating", rating);
-            countQuery.setParameter("search", search == null || search.isBlank() ? null : search);
+            countQuery.setParameter("search", search == null || search.isBlank() ? "" : search);
 
             return countQuery.getSingleResult().chain(countVal -> {
                 long total = ((Number) countVal).longValue();
@@ -196,7 +215,7 @@ public class ReviewQueryRepository implements PanacheRepository<Review> {
                 var dataQuery = session.createNativeQuery(dataSql);
                 dataQuery.setParameter("productId", productId);
                 dataQuery.setParameter("rating", rating);
-                dataQuery.setParameter("search", search == null || search.isBlank() ? null : search);
+                dataQuery.setParameter("search", search == null || search.isBlank() ? "" : search);
                 dataQuery.setParameter("limit", size);
                 dataQuery.setParameter("offset", page * size);
 

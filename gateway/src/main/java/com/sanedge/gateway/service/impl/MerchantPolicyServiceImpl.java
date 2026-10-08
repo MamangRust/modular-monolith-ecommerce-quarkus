@@ -17,10 +17,10 @@ public class MerchantPolicyServiceImpl implements MerchantPolicyService {
     @Inject
     TelemetryHelper telemetryHelper;
 
-    @GrpcClient("merchant")
+    @GrpcClient("merchant_policy")
     pb.merchant_policy.MutinyMerchantPolicyQueryServiceGrpc.MutinyMerchantPolicyQueryServiceStub merchantPolicyQueryService;
 
-    @GrpcClient("merchant")
+    @GrpcClient("merchant_policy")
     pb.merchant_policy.MutinyMerchantPolicyCommandServiceGrpc.MutinyMerchantPolicyCommandServiceStub merchantPolicyCommandService;
 
     @Override

@@ -6,10 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/**
- * Placeholder repository tests for {@link ShippingAddressCommandRepository}.
- * Requires a real DB session to exercise Panache queries.
- */
 @ExtendWith(MockitoExtension.class)
 class ShippingAddressCommandRepositoryTest {
 

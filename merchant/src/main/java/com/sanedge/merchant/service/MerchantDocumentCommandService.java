@@ -20,9 +20,9 @@ public interface MerchantDocumentCommandService {
 
     Uni<ApiResponse<MerchantDocumentResponseDeleteAt>> restore(Long id);
 
-    Uni<ApiResponse<Boolean>> deletePermanent(Long id);
+    Uni<ApiResponse<Void>> deletePermanent(Long id);
 
-    Uni<ApiResponse<Boolean>> restoreAll();
+    Uni<ApiResponse<Void>> restoreAll();
 
-    Uni<ApiResponse<Boolean>> deleteAllPermanent();
+    Uni<ApiResponse<Void>> deleteAllPermanent();
 }

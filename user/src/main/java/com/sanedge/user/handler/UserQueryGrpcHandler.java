@@ -7,6 +7,7 @@ import com.sanedge.user.service.UserQueryService;
 
 import io.quarkus.grpc.GrpcService;
 import io.smallrye.mutiny.Uni;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import jakarta.inject.Inject;
 import pb.user.MutinyUserQueryServiceGrpc;
 import pb.user.UserCommon.ApiResponsePaginationUser;
@@ -16,6 +17,7 @@ import pb.user.UserCommon.FindByIdUserRequest;
 import pb.user.UserCommon.UserResponse;
 import pb.user.UserCommon.UserResponseDeleteAt;
 import pb.user.UserQuery.FindAllUserRequest;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 public class UserQueryGrpcHandler extends MutinyUserQueryServiceGrpc.UserQueryServiceImplBase {
@@ -24,6 +26,7 @@ public class UserQueryGrpcHandler extends MutinyUserQueryServiceGrpc.UserQuerySe
     UserQueryService userQueryService;
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationUser> findAll(FindAllUserRequest request) {
         FindAllUsers req = new FindAllUsers();
         req.setPage(request.getPage());
@@ -50,7 +53,11 @@ public class UserQueryGrpcHandler extends MutinyUserQueryServiceGrpc.UserQuerySe
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseUser> findById(FindByIdUserRequest request) {
+        if (request.getId() <= 0) {
+            return IdValidator.invalid("id");
+        }
         return userQueryService.findById((long) request.getId())
                 .map(res -> {
                     ApiResponseUser.Builder builder = ApiResponseUser.newBuilder()
@@ -64,6 +71,7 @@ public class UserQueryGrpcHandler extends MutinyUserQueryServiceGrpc.UserQuerySe
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationUserDeleteAt> findByActive(FindAllUserRequest request) {
         FindAllUsers req = new FindAllUsers();
         req.setPage(request.getPage());
@@ -88,6 +96,7 @@ public class UserQueryGrpcHandler extends MutinyUserQueryServiceGrpc.UserQuerySe
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponsePaginationUserDeleteAt> findByTrashed(FindAllUserRequest request) {
         FindAllUsers req = new FindAllUsers();
         req.setPage(request.getPage());

@@ -13,7 +13,7 @@ public interface MerchantPolicyCommandService {
     Uni<ApiResponse<MerchantPoliciesResponse>> update(UpdateMerchantPolicyRequest request);
     Uni<ApiResponse<MerchantPoliciesResponseDeleteAt>> trash(Long id);
     Uni<ApiResponse<MerchantPoliciesResponseDeleteAt>> restore(Long id);
-    Uni<ApiResponse<Boolean>> delete(Long id);
-    Uni<ApiResponse<Boolean>> restoreAll();
-    Uni<ApiResponse<Boolean>> deleteAll();
+    Uni<ApiResponse<Void>> delete(Long id);
+    Uni<ApiResponse<Void>> restoreAll();
+    Uni<ApiResponse<Void>> deleteAll();
 }

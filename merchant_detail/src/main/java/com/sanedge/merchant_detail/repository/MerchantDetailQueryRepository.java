@@ -24,18 +24,27 @@ public class MerchantDetailQueryRepository
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
-    public Uni<PagedResult<MerchantDetailsRelation>> findAllWithSocialLinks(String keyword, int page, int size) {
-        return queryWithSocialLinks(keyword, null, null, page, size);
+    public Uni<PagedResult<MerchantDetailsRelation>> findAllWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+        return queryWithSocialLinks(search, null, null, page, size);
     }
 
     @Override
-    public Uni<PagedResult<MerchantDetailsRelation>> findActiveWithSocialLinks(String keyword, int page, int size) {
-        return queryWithSocialLinks(keyword, true, null, page, size);
+    public Uni<PagedResult<MerchantDetailsRelation>> findActiveWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+        return queryWithSocialLinks(search, true, null, page, size);
     }
 
     @Override
-    public Uni<PagedResult<MerchantDetailsRelation>> findTrashedWithSocialLinks(String keyword, int page, int size) {
-        return queryWithSocialLinks(keyword, false, null, page, size);
+    public Uni<PagedResult<MerchantDetailsRelation>> findTrashedWithSocialLinks(com.sanedge.merchant_detail.domain.requests.FindAllMerchantRequest req) {
+        int page = req.getPage() > 0 ? req.getPage() - 1 : 0;
+        int size = req.getPageSize() > 0 ? req.getPageSize() : 10;
+        String search = (req.getSearch() != null && !req.getSearch().isEmpty()) ? req.getSearch() : "";
+        return queryWithSocialLinks(search, false, null, page, size);
     }
 
     @Override

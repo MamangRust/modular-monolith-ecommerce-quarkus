@@ -30,10 +30,10 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
             WITH
                 date_ranges AS (
                     SELECT
-                        PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range1_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range1_end,
-                        PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range2_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range2_end
+                        MAKE_DATE(:year1, :month1, 1) AS range1_start,
+                        (MAKE_DATE(:year1, :month1, 1) + INTERVAL '1 month') AS range1_end,
+                        MAKE_DATE(:year2, :month2, 1) AS range2_start,
+                        (MAKE_DATE(:year2, :month2, 1) + INTERVAL '1 month') AS range2_end
                 ),
                 payment_methods AS (
                     SELECT DISTINCT payment_method
@@ -52,7 +52,7 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
                 ),
                 monthly_transactions AS (
                     SELECT
-                        PARSEDATETIME(FORMATDATETIME(t.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd') AS activity_month,
+                        DATE_TRUNC('month', t.created_at) AS activity_month,
                         t.payment_method,
                         COUNT(t.id) AS total_transactions,
                         CAST(COALESCE(SUM(t.amount), 0) AS BIGINT) AS total_amount
@@ -63,10 +63,10 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
                         (t.created_at >= dr.range2_start AND t.created_at < dr.range2_end)
                     )
                     WHERE t.deleted_at IS NULL AND t.payment_status = 'SUCCESS'
-                    GROUP BY PARSEDATETIME(FORMATDATETIME(t.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd'), t.payment_method
+                    GROUP BY DATE_TRUNC('month', t.created_at), t.payment_method
                 )
             SELECT
-                FORMATDATETIME(ac.activity_month, 'MMM') AS "month",
+                TO_CHAR(ac.activity_month, 'Mon') AS "month",
                 ac.payment_method AS paymentMethod,
                 CAST(COALESCE(mt.total_transactions, 0) AS BIGINT) AS totalTransactions,
                 CAST(COALESCE(mt.total_amount, 0) AS BIGINT) AS totalAmount
@@ -115,10 +115,10 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
             WITH
                 date_ranges AS (
                     SELECT
-                        PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range1_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range1_end,
-                        PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range2_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range2_end
+                        MAKE_DATE(:year1, :month1, 1) AS range1_start,
+                        (MAKE_DATE(:year1, :month1, 1) + INTERVAL '1 month') AS range1_end,
+                        MAKE_DATE(:year2, :month2, 1) AS range2_start,
+                        (MAKE_DATE(:year2, :month2, 1) + INTERVAL '1 month') AS range2_end
                 ),
                 payment_methods AS (
                     SELECT DISTINCT payment_method
@@ -137,7 +137,7 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
                 ),
                 monthly_transactions AS (
                     SELECT
-                        PARSEDATETIME(FORMATDATETIME(t.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd') AS activity_month,
+                        DATE_TRUNC('month', t.created_at) AS activity_month,
                         t.payment_method,
                         COUNT(t.id) AS total_transactions,
                         CAST(COALESCE(SUM(t.amount), 0) AS BIGINT) AS total_amount
@@ -148,10 +148,10 @@ public class TransactionMethodRepository implements PanacheRepository<Transactio
                         (t.created_at >= dr.range2_start AND t.created_at < dr.range2_end)
                     )
                     WHERE t.deleted_at IS NULL AND t.payment_status = 'FAILED'
-                    GROUP BY PARSEDATETIME(FORMATDATETIME(t.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd'), t.payment_method
+                    GROUP BY DATE_TRUNC('month', t.created_at), t.payment_method
                 )
             SELECT
-                FORMATDATETIME(ac.activity_month, 'MMM') AS "month",
+                TO_CHAR(ac.activity_month, 'Mon') AS "month",
                 ac.payment_method AS paymentMethod,
                 CAST(COALESCE(mt.total_transactions, 0) AS BIGINT) AS totalTransactions,
                 CAST(COALESCE(mt.total_amount, 0) AS BIGINT) AS totalAmount

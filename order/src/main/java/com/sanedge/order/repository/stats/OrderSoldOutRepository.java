@@ -28,10 +28,10 @@ public class OrderSoldOutRepository implements PanacheRepository<Order> {
             WITH
                 date_ranges AS (
                     SELECT
-                        PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range1_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year1 AS VARCHAR) || '-' || CAST(:month1 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range1_end,
-                        PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd') AS range2_start,
-                        DATEADD('MONTH', 1, PARSEDATETIME(CAST(:year2 AS VARCHAR) || '-' || CAST(:month2 AS VARCHAR) || '-01', 'yyyy-M-dd')) AS range2_end
+                        MAKE_DATE(:year1, :month1, 1)::timestamp AS range1_start,
+                        (MAKE_DATE(:year1, :month1, 1) + INTERVAL '1 month')::timestamp AS range1_end,
+                        MAKE_DATE(:year2, :month2, 1)::timestamp AS range2_start,
+                        (MAKE_DATE(:year2, :month2, 1) + INTERVAL '1 month')::timestamp AS range2_end
                 ),
                 all_months AS (
                     SELECT range1_start AS activity_month FROM date_ranges
@@ -40,7 +40,7 @@ public class OrderSoldOutRepository implements PanacheRepository<Order> {
                 ),
                 monthly_orders AS (
                     SELECT
-                        PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd') AS activity_month,
+                        DATE_TRUNC('month', o.created_at) AS activity_month,
                         CAST(COUNT(o.id) AS INTEGER) AS order_count,
                         CAST(SUM(o.total_price) AS BIGINT) AS total_revenue,
                         CAST(SUM(oi.quantity) AS INTEGER) AS total_items_sold
@@ -53,10 +53,10 @@ public class OrderSoldOutRepository implements PanacheRepository<Order> {
                     )
                     WHERE o.deleted_at IS NULL
                       AND oi.deleted_at IS NULL
-                    GROUP BY PARSEDATETIME(FORMATDATETIME(o.created_at, 'yyyy-MM-01'), 'yyyy-MM-dd')
+                    GROUP BY DATE_TRUNC('month', o.created_at)
                 )
             SELECT
-                FORMATDATETIME(am.activity_month, 'MMM') AS "month",
+                TO_CHAR(am.activity_month, 'Mon') AS "month",
                 CAST(COALESCE(mo.order_count, 0) AS INTEGER) AS orderCount,
                 CAST(COALESCE(mo.total_revenue, 0) AS BIGINT) AS totalRevenue,
                 CAST(COALESCE(mo.total_items_sold, 0) AS INTEGER) AS totalItemsSold

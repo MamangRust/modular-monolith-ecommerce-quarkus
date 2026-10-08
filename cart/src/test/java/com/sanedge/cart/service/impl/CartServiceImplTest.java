@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sanedge.cart.domain.requests.CreateCartRequest;
@@ -41,254 +42,255 @@ import io.smallrye.mutiny.Uni;
 @ExtendWith(MockitoExtension.class)
 class CartServiceImplTest {
 
-    @Mock
-    private CartQueryRepository cartQueryRepository;
+        @Mock
+        private CartQueryRepository cartQueryRepository;
 
-    @Mock
-    private CartCommandRepository cartCommandRepository;
+        @Mock
+        private CartCommandRepository cartCommandRepository;
 
-    @Mock
-    private RedisService redisService;
+        @Mock
+        private RedisService redisService;
 
-    @Mock
-    private TracingMetrics tracingMetrics;
+        @Mock
+        private TracingMetrics tracingMetrics;
 
-    private CartServiceImpl cartService;
-    private ObjectMapper objectMapper;
+        private CartServiceImpl cartService;
+        private ObjectMapper objectMapper;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        objectMapper = new ObjectMapper();
+        @BeforeEach
+        void setUp() throws Exception {
+                objectMapper = new ObjectMapper();
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
+                cartService = new CartServiceImpl(
+                                cartQueryRepository,
+                                cartCommandRepository,
+                                redisService,
+                                objectMapper,
+                                tracingMetrics);
+        }
 
-        // Mock the TracingMetrics.traceAndMeasure to execute the supplier directly
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any()))
-                .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
-                    Supplier<Uni<?>> supplier = invocation.getArgument(3);
-                    return supplier.get();
-                });
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any()))
-                .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
-                    Supplier<Uni<?>> supplier = invocation.getArgument(2);
-                    return supplier.get();
-                });
+        @Test
+        @DisplayName("createCart - should successfully create a cart")
+        void createCart_Success() {
+                CreateCartRequest request = new CreateCartRequest();
+                request.setUserId(1);
+                request.setProductId(100);
+                request.setQuantity(2);
 
-        cartService = new CartServiceImpl(
-                cartQueryRepository,
-                cartCommandRepository,
-                redisService,
-                objectMapper,
-                tracingMetrics
-        );
-    }
+                Cart savedCart = createTestCart(1L, 1, 100, "Product 100", 2);
 
-    // ========== CREATE CART TESTS ==========
+                when(cartCommandRepository.persist(any(Cart.class)))
+                                .thenReturn(Uni.createFrom().item(savedCart));
 
-    @Test
-    @DisplayName("createCart - should successfully create a cart")
-    void createCart_Success() {
-        CreateCartRequest request = new CreateCartRequest();
-        request.setUserId(1);
-        request.setProductId(100);
-        request.setQuantity(2);
+                ApiResponse<CartResponse> result = cartService.createCart(request)
+                                .await().indefinitely();
 
-        Cart savedCart = createTestCart(1L, 1, 100, "Product 100", 2);
+                assertThat(result).isNotNull();
+                assertThat(result.status()).isEqualTo("success");
+                assertThat(result.message()).isEqualTo("Cart created successfully");
+                assertThat(result.data()).isNotNull();
+                assertThat(result.data().getUserId()).isEqualTo(1);
+                assertThat(result.data().getProductId()).isEqualTo(100);
+                assertThat(result.data().getQuantity()).isEqualTo(2);
+                verify(cartCommandRepository).persist(any(Cart.class));
+        }
 
-        when(cartCommandRepository.persist(any(Cart.class)))
-                .thenReturn(Uni.createFrom().item(savedCart));
+        @Test
+        @DisplayName("deletePermanent - should successfully delete cart permanently")
+        void deletePermanent_Success() {
+                Long cartId = 1L;
+                Cart existingCart = createTestCart(cartId, 1, 100, "Product 100", 2);
 
-        ApiResponse<CartResponse> result = cartService.createCart(request)
-                .await().indefinitely();
+                when(cartCommandRepository.findById(cartId))
+                                .thenReturn(Uni.createFrom().item(existingCart));
+                when(cartCommandRepository.deleteCartById(cartId))
+                                .thenReturn(Uni.createFrom().item(true));
 
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo("success");
-        assertThat(result.message()).isEqualTo("Cart created successfully");
-        assertThat(result.data()).isNotNull();
-        assertThat(result.data().getUserId()).isEqualTo(1);
-        assertThat(result.data().getProductId()).isEqualTo(100);
-        assertThat(result.data().getQuantity()).isEqualTo(2);
-        verify(cartCommandRepository).persist(any(Cart.class));
-    }
+                ApiResponse<Void> result = cartService.deletePermanent(cartId)
+                                .await().indefinitely();
 
-    // ========== DELETE CART (PERMANENT) TESTS ==========
+                assertThat(result).isNotNull();
+                assertThat(result.status()).isEqualTo("success");
+                assertThat(result.message()).isEqualTo("Cart deleted permanently");
+                verify(cartCommandRepository).findById(cartId);
+                verify(cartCommandRepository).deleteCartById(cartId);
+        }
 
-    @Test
-    @DisplayName("deletePermanent - should successfully delete cart permanently")
-    void deletePermanent_Success() {
-        Long cartId = 1L;
-        Cart existingCart = createTestCart(cartId, 1, 100, "Product 100", 2);
+        @Test
+        @DisplayName("deletePermanent - should fail when cart not found")
+        void deletePermanent_NotFound() {
+                Long cartId = 999L;
 
-        when(cartCommandRepository.findById(cartId))
-                .thenReturn(Uni.createFrom().item(existingCart));
-        when(cartCommandRepository.deleteCartById(cartId))
-                .thenReturn(Uni.createFrom().item(true));
+                when(cartCommandRepository.findById(cartId))
+                                .thenReturn(Uni.createFrom().nullItem());
 
-        ApiResponse<Void> result = cartService.deletePermanent(cartId)
-                .await().indefinitely();
+                assertThatThrownBy(() -> cartService.deletePermanent(cartId).await().indefinitely())
+                                .isInstanceOf(ResourceNotFoundException.class)
+                                .hasMessageContaining("Cart not found with id: " + cartId);
+        }
 
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo("success");
-        assertThat(result.message()).isEqualTo("Cart deleted permanently");
-        verify(cartCommandRepository).findById(cartId);
-        verify(cartCommandRepository).deleteCartById(cartId);
-    }
+        @Test
+        @DisplayName("deleteAllPermanently - should successfully delete all carts")
+        void deleteAllPermanently_Success() {
+                DeleteCartRequest request = new DeleteCartRequest();
+                request.setCartIds(List.of(1, 2, 3));
 
-    @Test
-    @DisplayName("deletePermanent - should fail when cart not found")
-    void deletePermanent_NotFound() {
-        Long cartId = 999L;
+                when(cartCommandRepository.deleteCartsByIds(any()))
+                                .thenReturn(Uni.createFrom().item(true));
 
-        when(cartCommandRepository.findById(cartId))
-                .thenReturn(Uni.createFrom().nullItem());
+                ApiResponse<Void> result = cartService.deleteAllPermanently(request)
+                                .await().indefinitely();
 
-        assertThatThrownBy(() -> cartService.deletePermanent(cartId).await().indefinitely())
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Cart not found with id: " + cartId);
-    }
+                assertThat(result).isNotNull();
+                assertThat(result.status()).isEqualTo("success");
+                assertThat(result.message()).isEqualTo("Carts deleted permanently");
+                verify(cartCommandRepository).deleteCartsByIds(any());
+        }
 
-    // ========== DELETE ALL CARTS (PERMANENT) TESTS ==========
+        @Test
+        @DisplayName("findAll - should fetch from DB and cache when cache miss")
+        void findAll_CacheMiss() {
+                FindAllCartsRequest request = new FindAllCartsRequest();
+                request.setUserId(1);
+                request.setPage(1);
+                request.setPageSize(10);
+                request.setSearch(null);
 
-    @Test
-    @DisplayName("deleteAllPermanently - should successfully delete all carts")
-    void deleteAllPermanently_Success() {
-        DeleteCartRequest request = new DeleteCartRequest();
-        request.setCartIds(List.of(1, 2, 3));
+                Cart cart1 = createTestCart(1L, 1, 100, "Product 100", 2);
+                Cart cart2 = createTestCart(2L, 1, 101, "Product 101", 1);
 
-        when(cartCommandRepository.deleteCartsByIds(any()))
-                .thenReturn(Uni.createFrom().item(true));
+                PagedResult<Cart> pagedResult = new PagedResult<>(List.of(cart1, cart2), 2);
 
-        ApiResponse<Void> result = cartService.deleteAllPermanently(request)
-                .await().indefinitely();
+                when(redisService.getReactive(anyString()))
+                                .thenReturn(Uni.createFrom().nullItem());
+                when(cartQueryRepository.findCartsByUser(any()))
+                                .thenReturn(Uni.createFrom().item(pagedResult));
+                when(redisService.setWithExpirationReactive(anyString(), anyString(),
+                                org.mockito.ArgumentMatchers.anyLong()))
+                                .thenReturn(Uni.createFrom().voidItem());
 
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo("success");
-        assertThat(result.message()).isEqualTo("Carts deleted permanently");
-        verify(cartCommandRepository).deleteCartsByIds(any());
-    }
+                ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
+                                .await().indefinitely();
 
-    // ========== FIND ALL CARTS TESTS ==========
+                assertThat(result).isNotNull();
+                assertThat(result.status()).isEqualTo("success");
+                assertThat(result.data()).hasSize(2);
+                verify(cartQueryRepository).findCartsByUser(any());
+                verify(redisService).setWithExpirationReactive(anyString(), anyString(),
+                                org.mockito.ArgumentMatchers.anyLong());
+        }
 
-    @Test
-    @DisplayName("findAll - should fetch from DB and cache when cache miss")
-    void findAll_CacheMiss() {
-        FindAllCartsRequest request = new FindAllCartsRequest();
-        request.setUserId(1);
-        request.setPage(1);
-        request.setPageSize(10);
-        request.setSearch(null);
+        @Test
+        @DisplayName("findAll - should return empty list when no carts found")
+        void findAll_EmptyList() {
+                FindAllCartsRequest request = new FindAllCartsRequest();
+                request.setUserId(999);
+                request.setPage(1);
+                request.setPageSize(10);
+                request.setSearch(null);
 
-        Cart cart1 = createTestCart(1L, 1, 100, "Product 100", 2);
-        Cart cart2 = createTestCart(2L, 1, 101, "Product 101", 1);
+                PagedResult<Cart> emptyResult = new PagedResult<>(List.of(), 0);
 
-        PagedResult<Cart> pagedResult = new PagedResult<>(List.of(cart1, cart2), 2);
+                when(redisService.getReactive(anyString()))
+                                .thenReturn(Uni.createFrom().nullItem());
+                when(cartQueryRepository.findCartsByUser(any()))
+                                .thenReturn(Uni.createFrom().item(emptyResult));
+                when(redisService.setWithExpirationReactive(anyString(), anyString(),
+                                org.mockito.ArgumentMatchers.anyLong()))
+                                .thenReturn(Uni.createFrom().voidItem());
 
-        // Cache miss
-        when(redisService.getReactive(anyString()))
-                .thenReturn(Uni.createFrom().nullItem());
-        when(cartQueryRepository.findCartsByUser(any()))
-                .thenReturn(Uni.createFrom().item(pagedResult));
-        when(redisService.setWithExpirationReactive(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(Uni.createFrom().voidItem());
+                ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
+                                .await().indefinitely();
 
-        ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
-                .await().indefinitely();
+                assertThat(result).isNotNull();
+                assertThat(result.status()).isEqualTo("success");
+                assertThat(result.data()).isEmpty();
+                assertThat(result.pagination().totalRecords()).isEqualTo(0);
+        }
 
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo("success");
-        assertThat(result.data()).hasSize(2);
-        verify(cartQueryRepository).findCartsByUser(any());
-        verify(redisService).setWithExpirationReactive(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong());
-    }
+        @Test
+        @DisplayName("findAll - should handle search query correctly")
+        void findAll_WithSearch() {
+                FindAllCartsRequest request = new FindAllCartsRequest();
+                request.setUserId(1);
+                request.setPage(1);
+                request.setPageSize(10);
+                request.setSearch("Product 100");
 
-    @Test
-    @DisplayName("findAll - should return empty list when no carts found")
-    void findAll_EmptyList() {
-        FindAllCartsRequest request = new FindAllCartsRequest();
-        request.setUserId(999);
-        request.setPage(1);
-        request.setPageSize(10);
-        request.setSearch(null);
+                Cart cart1 = createTestCart(1L, 1, 100, "Product 100", 2);
 
-        PagedResult<Cart> emptyResult = new PagedResult<>(List.of(), 0);
+                PagedResult<Cart> pagedResult = new PagedResult<>(List.of(cart1), 1);
 
-        when(redisService.getReactive(anyString()))
-                .thenReturn(Uni.createFrom().nullItem());
-        when(cartQueryRepository.findCartsByUser(any()))
-                .thenReturn(Uni.createFrom().item(emptyResult));
-        when(redisService.setWithExpirationReactive(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(Uni.createFrom().voidItem());
+                when(redisService.getReactive(anyString()))
+                                .thenReturn(Uni.createFrom().nullItem());
+                when(cartQueryRepository.findCartsByUser(any()))
+                                .thenReturn(Uni.createFrom().item(pagedResult));
+                when(redisService.setWithExpirationReactive(anyString(), anyString(),
+                                org.mockito.ArgumentMatchers.anyLong()))
+                                .thenReturn(Uni.createFrom().voidItem());
 
-        ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
-                .await().indefinitely();
+                ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
+                                .await().indefinitely();
 
-        assertThat(result).isNotNull();
-        assertThat(result.status()).isEqualTo("success");
-        assertThat(result.data()).isEmpty();
-        assertThat(result.pagination().totalRecords()).isEqualTo(0);
-    }
+                assertThat(result).isNotNull();
+                assertThat(result.data()).hasSize(1);
+                assertThat(result.data().get(0).getName()).isEqualTo("Product 100");
+                verify(cartQueryRepository).findCartsByUser(any());
+        }
 
-    @Test
-    @DisplayName("findAll - should handle search query correctly")
-    void findAll_WithSearch() {
-        FindAllCartsRequest request = new FindAllCartsRequest();
-        request.setUserId(1);
-        request.setPage(1);
-        request.setPageSize(10);
-        request.setSearch("Product 100");
-
-        Cart cart1 = createTestCart(1L, 1, 100, "Product 100", 2);
-
-        PagedResult<Cart> pagedResult = new PagedResult<>(List.of(cart1), 1);
-
-        when(redisService.getReactive(anyString()))
-                .thenReturn(Uni.createFrom().nullItem());
-        when(cartQueryRepository.findCartsByUser(any()))
-                .thenReturn(Uni.createFrom().item(pagedResult));
-        when(redisService.setWithExpirationReactive(anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(Uni.createFrom().voidItem());
-
-        ApiResponsePagination<List<CartResponse>> result = cartService.findAll(request)
-                .await().indefinitely();
-
-        assertThat(result).isNotNull();
-        assertThat(result.data()).hasSize(1);
-        assertThat(result.data().get(0).getName()).isEqualTo("Product 100");
-        verify(cartQueryRepository).findCartsByUser(any());
-    }
-
-    // ========== HELPER METHODS ==========
-
-    private Cart createTestCart(Long id, Integer userId, Integer productId, String name, Integer quantity) {
-        Cart cart = new Cart();
-        try {
-            // PanacheEntity has the id field, so we need to access it through the parent class hierarchy
-            java.lang.reflect.Field idField = null;
-            Class<?> clazz = cart.getClass();
-            while (clazz != null && clazz != Object.class) {
+        private Cart createTestCart(Long id, Integer userId, Integer productId, String name, Integer quantity) {
+                Cart cart = new Cart();
                 try {
-                    idField = clazz.getDeclaredField("id");
+
+                        java.lang.reflect.Field idField = null;
+                        Class<?> clazz = cart.getClass();
+                        while (clazz != null && clazz != Object.class) {
+                                try {
+                                        idField = clazz.getDeclaredField("id");
+                                        break;
+                                } catch (NoSuchFieldException e) {
+                                        clazz = clazz.getSuperclass();
+                                }
+                        }
+                        if (idField != null) {
+                                idField.setAccessible(true);
+                                idField.set(cart, id);
+                        }
+                } catch (Exception e) {
+                        throw new RuntimeException("Failed to set cart id", e);
+                }
+                cart.setUserId(userId);
+                cart.setProductId(productId);
+                cart.setName(name);
+                cart.setPrice(100);
+                cart.setImage("default.png");
+                cart.setQuantity(quantity);
+                cart.setWeight(100);
+                cart.setCreatedAt(Timestamp.valueOf(LocalDateTime.now()));
+                cart.setUpdatedAt(Timestamp.valueOf(LocalDateTime.now()));
+                return cart;
+        }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
                     break;
-                } catch (NoSuchFieldException e) {
-                    clazz = clazz.getSuperclass();
                 }
             }
-            if (idField != null) {
-                idField.setAccessible(true);
-                idField.set(cart, id);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to set cart id", e);
-        }
-        cart.setUserId(userId);
-        cart.setProductId(productId);
-        cart.setName(name);
-        cart.setPrice(100);
-        cart.setImage("default.png");
-        cart.setQuantity(quantity);
-        cart.setWeight(100);
-        cart.setCreatedAt(Timestamp.valueOf(LocalDateTime.now()));
-        cart.setUpdatedAt(Timestamp.valueOf(LocalDateTime.now()));
-        return cart;
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

@@ -17,9 +17,9 @@ public interface MerchantDetailCommandService {
 
     Uni<ApiResponse<MerchantDetailResponseDeleteAt>> restoreMerchant(Long merchantID);
 
-    Uni<ApiResponse<Boolean>> deleteMerchantPermanent(Long merchantID);
+    Uni<ApiResponse<Void>> deleteMerchantPermanent(Long merchantID);
 
-    Uni<ApiResponse<Boolean>> restoreAllMerchant();
+    Uni<ApiResponse<Void>> restoreAllMerchant();
 
-    Uni<ApiResponse<Boolean>> deleteAllMerchantPermanent();
+    Uni<ApiResponse<Void>> deleteAllMerchantPermanent();
 }

@@ -37,13 +37,13 @@ public class SliderCommandRepository implements PanacheRepository<Slider> {
     }
 
     @WithTransaction
-    public Uni<Boolean> deletePermanent(Long sliderId) {
+    public Uni<Slider> deletePermanent(Long sliderId) {
         return find("id = ?1 AND deletedAt IS NOT NULL", sliderId).firstResult()
                 .chain(slider -> {
                     if (slider != null) {
-                        return delete(slider).map(v -> true);
+                        return delete(slider).map(v -> slider);
                     }
-                    return Uni.createFrom().item(false);
+                    return Uni.createFrom().nullItem();
                 });
     }
 

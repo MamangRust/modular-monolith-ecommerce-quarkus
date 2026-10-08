@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 
 import java.lang.reflect.Field;
 import java.sql.Timestamp;
@@ -49,10 +50,11 @@ class ReviewQueryServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(2)).get());
-        lenient().when(tracingMetrics.traceAndMeasure(anyString(), anyString(), any(Attributes.class), any(Supplier.class)))
-                .thenAnswer(inv -> ((Supplier<Uni<?>>) inv.getArgument(3)).get());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics).traceAndMeasure(anyString(), anyString(), any());
+        lenient().doAnswer(invokeSupplier())
+                .when(tracingMetrics)
+                        .traceAndMeasure(anyString(), anyString(), any(Attributes.class), any());
 
         service = new ReviewQueryServiceImpl(
                 reviewQueryRepository,
@@ -64,10 +66,12 @@ class ReviewQueryServiceImplTest {
     private Review mkReview(Long id) {
         Review r = new Review();
         try {
-            Field idField = r.getClass().getSuperclass().getSuperclass().getDeclaredField("id");
+            Field idField = r.getClass().getDeclaredField("id");
             idField.setAccessible(true);
             idField.set(r, id);
-        } catch (Exception e) { throw new RuntimeException(e); }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         r.setComment("Great");
         r.setUserId(1);
         r.setProductId(1);
@@ -80,7 +84,8 @@ class ReviewQueryServiceImplTest {
     @Test
     void findById_Success() {
         lenient().when(redisService.getReactive(anyString())).thenReturn(Uni.createFrom().nullItem());
-        when(reviewQueryRepository.findReviewById(anyLong())).thenReturn(Uni.createFrom().item(Optional.of(mkReview(1L))));
+        when(reviewQueryRepository.findReviewById(anyLong()))
+                .thenReturn(Uni.createFrom().item(Optional.of(mkReview(1L))));
         ApiResponse<?> result = service.findById(1).await().indefinitely();
         assertThat(result.status()).isEqualTo("success");
         assertThat(result.message()).isEqualTo("Review retrieved successfully");
@@ -97,7 +102,7 @@ class ReviewQueryServiceImplTest {
     @Test
     void findById_CacheHit_ReturnsCached() {
         Review review = mkReview(1L);
-        Object cached = ApiResponse.success("Review retrieved successfully", com.sanedge.review.domain.response.ReviewResponse.from(review));
+        Object cached = com.sanedge.review.domain.response.ReviewResponse.from(review);
         String cachedJson;
         try {
             cachedJson = objectMapper.writeValueAsString(cached);
@@ -122,5 +127,24 @@ class ReviewQueryServiceImplTest {
                 .thenReturn(Uni.createFrom().voidItem());
         var result = service.findAll(req).await().indefinitely();
         assertThat(result.status()).isEqualTo("success");
+    }
+
+    /**
+     * Finds the Supplier argument in the invocation regardless of whether it was
+     * passed positionally in the 3-arg overload (arg index 2) or 4-arg overload
+     * (arg index 3), then invokes it and returns the resulting Uni. This lets
+     * a single Answer<?> body serve both traceAndMeasure overloads.
+     */
+    private Answer<Uni<?>> invokeSupplier() {
+        return invocation -> {
+            Supplier<?> supplier = null;
+            for (Object arg : invocation.getArguments()) {
+                if (arg instanceof Supplier<?>) {
+                    supplier = (Supplier<?>) arg;
+                    break;
+                }
+            }
+            return supplier != null ? (Uni<?>) supplier.get() : null;
+        };
     }
 }

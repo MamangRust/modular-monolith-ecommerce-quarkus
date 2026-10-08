@@ -1,7 +1,7 @@
 package com.sanedge.review_detail.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 
 import java.lang.reflect.Field;
@@ -32,7 +32,7 @@ class ReviewDetailQueryGrpcHandlerTest {
 
     @Test
     void findById_Success() {
-        lenient().when(reviewDetailService.findById(any(Long.class))).thenAnswer(i -> Uni.createFrom().item(ApiResponse.success("ok", null)));
+        lenient().when(reviewDetailService.findById(anyInt())).thenAnswer(i -> Uni.createFrom().item(ApiResponse.success("ok", null)));
         var result = reviewDetailQueryGrpcHandler.findById(pb.review_detail.ReviewDetailCommon.FindByIdReviewDetailRequest.newBuilder().setId(1).build()).await().indefinitely();
         assertThat(result).isNotNull();
     }

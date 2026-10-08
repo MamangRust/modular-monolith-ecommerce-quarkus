@@ -9,7 +9,9 @@ import com.sanedge.order.domain.response.OrderYearlyTotalRevenueResponse;
 import com.sanedge.order.service.OrderTotalRevenueByMerchantService;
 
 import io.grpc.Status;
+import com.sanedge.common.grpc.GrpcErrorMapper;
 import io.quarkus.grpc.GrpcService;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -19,6 +21,7 @@ import pb.order.OrderCommon.ApiResponseOrderMonthlyTotalRevenue;
 import pb.order.OrderCommon.ApiResponseOrderYearlyTotalRevenue;
 import pb.order.stats.OrderTotalRevenue.FindYearMonthTotalRevenueByMerchant;
 import pb.order.stats.OrderTotalRevenue.FindYearTotalRevenueByMerchant;
+import com.sanedge.common.utils.IdValidator;
 
 @GrpcService
 @Singleton
@@ -28,8 +31,12 @@ public class OrderTotalRevenueByMerchantGrpcHandler extends MutinyOrderTotalReve
     OrderTotalRevenueByMerchantService orderTotalRevenueByMerchantService;
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderMonthlyTotalRevenue> findMonthlyTotalRevenueByMerchant(
             FindYearMonthTotalRevenueByMerchant request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         MonthTotalRevenueMerchantRequest domainReq = new MonthTotalRevenueMerchantRequest();
         domainReq.setYear(request.getYear());
         domainReq.setMonth(request.getMonth());
@@ -46,12 +53,16 @@ public class OrderTotalRevenueByMerchantGrpcHandler extends MutinyOrderTotalReve
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     @Override
+    @WithSession
     public Uni<ApiResponseOrderYearlyTotalRevenue> findYearlyTotalRevenueByMerchant(
             FindYearTotalRevenueByMerchant request) {
+        if (request.getMerchantId() <= 0) {
+            return IdValidator.invalid("Merchant id");
+        }
         YearTotalRevenueMerchantRequest domainReq = new YearTotalRevenueMerchantRequest();
         domainReq.setYear(request.getYear());
         domainReq.setMerchantId(request.getMerchantId());
@@ -66,7 +77,7 @@ public class OrderTotalRevenueByMerchantGrpcHandler extends MutinyOrderTotalReve
                     }
                     return builder.build();
                 })
-                .onFailure().transform(e -> Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
+                .onFailure().transform(e -> GrpcErrorMapper.toStatusRuntimeException(e));
     }
 
     private pb.order.OrderCommon.OrderMonthlyTotalRevenueResponse toProto(OrderMonthlyTotalRevenueResponse r) {

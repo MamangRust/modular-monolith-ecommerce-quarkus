@@ -5,14 +5,12 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Null;
 import lombok.Data;
 
 @Data
 @Schema(description = "Request untuk memperbarui informasi bisnis merchant")
 public class UpdateMerchantBusinessRequest {
 
-    @Null
     @Schema(description = "ID informasi bisnis merchant yang akan diperbarui", example = "1")
     private Integer merchantBusinessInfoId;
 
